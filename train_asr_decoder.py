@@ -51,7 +51,8 @@ def train(model, train_dataloader, device, distance, optim, lr_scheduler, epoch,
         (1) adjusted_targets_shape:  torch.Size([90, 1])
         (3) output_shape:  torch.Size([1, 90, 9897])
         """
-        output, hidden = model(input)
+        #output, hidden = model(input)
+        output = model(input)
         output = output.transpose(1, 0).contiguous().view(-1, 9897)
         original_targets = targets
         targets = targets.view(-1)
@@ -129,7 +130,8 @@ def main(version):
     decoder_model = FinalDecoder(
         input_size=1,
         hidden_size=hyper_params_decoder['hidden_size'],
-        output_size=hyper_params_decoder['n_classes']
+        output_size=hyper_params_decoder['n_classes'],
+        device=device
     ).to(device)
 
     # set up optimizer, loss function and learning rate scheduler

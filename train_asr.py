@@ -85,7 +85,7 @@ def train(model, train_dataloader, device, distance, optim, epoch, lr_scheduler,
 
         # ==== forward ====
         #output, unpadded_output_lens = model(spectrograms)
-        output = model(spectrograms)
+        output, audio_embedding = model(spectrograms)
         #output = output.transpose(1, 0)
         output = nn.LogSoftmax(dim=2)(output)
         output = output.transpose(0, 1)     # reshape to '(input_sequence_len, batch_size, n_classes)' as described in 'https://pytorch.org/docs/master/generated/torch.nn.CTCLoss.html'
@@ -237,7 +237,7 @@ def test(model, test_dataloader, device, distance):
 
 def main(root, train_url='train-clean-100', test_url='test-clean'):
     version = 4
-    CONTINUE_TRAINING = True
+    CONTINUE_TRAINING = False
     TRAIN_SPEECH_MODEL = True
     #TRAIN_DECODER_MODEL = False
 
@@ -255,7 +255,7 @@ def main(root, train_url='train-clean-100', test_url='test-clean'):
         'n_classes': 29,
         'n_features': 128,
         'dropout_p': 0.2,
-        'identity_weights': [0.15, 0.15, 0.1, 0.1, 0.1, 0.2, 0.2]
+        'd_audio_embedding': 128
     }
 
     """hyper_params_decoder = {
@@ -307,8 +307,8 @@ def main(root, train_url='train-clean-100', test_url='test-clean'):
             n_features=hyper_params_speech['n_features'],
             dropout_p=hyper_params_speech['dropout_p'],
             device=device,
-            identity_weights=hyper_params_speech['identity_weights'],
-            dataset=train_dataset
+            dataset=train_dataset,
+            d_audio_embedding=hyper_params_speech['d_audio_embedding']
         ).to(device)
         #speech_model = speech_model.apply(weights_init)
 
