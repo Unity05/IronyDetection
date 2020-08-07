@@ -4,6 +4,7 @@
   "he's": "he is",
   "she's": "she is",
   "it's": "it is",
+  "its": "it is",
   "that's": "that is",
   "thats": "that is",
   "there's": "there is",
@@ -35,5 +36,20 @@
   "aka": "also known as",
   "yeah": "yes",
   "yep": "yes",
-  "wks": "weeks"
+  "yap": "yes",
+  "yop": "yes",
+  "wks": "weeks",
+  "gonna": "going to",
+  "gimme": "give me",
+
+  "0": "zero",
+  "1": "one",
+  "2": "two",
+  "3": "three",
+  "4": "four",
+  "5": "five",
+  "6": "six",
+  "7": "seven",
+  "8": "eight",
+  "9": "nine"
 }
