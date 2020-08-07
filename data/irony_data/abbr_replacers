@@ -5,12 +5,16 @@
   "she's": "she is",
   "it's": "it is",
   "that's": "that is",
+  "thats": "that is",
+  "there's": "there is",
+  "theres": "there is",
   "we're": "we are",
   "they're": "they are",
   "i've": "i have",
   "you've": "you have",
   "we've": "we have",
   "they've": "they have",
+  "would've": "would have",
   "i'd": "i would",
   "you'd": "you would",
   "wouldn't": "would not",
@@ -30,5 +34,6 @@
   "afaik": "as far as i know",
   "aka": "also known as",
   "yeah": "yes",
-  "yep": "yes"
+  "yep": "yes",
+  "wks": "weeks"
 }
