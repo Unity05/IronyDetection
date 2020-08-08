@@ -26,7 +26,7 @@ def generate_vocabulary(root='data'):
             lambda x: ' '.join([abbreviation_policy.get(e, e) for e in x]))
         df['parent_comment'] = df.parent_comment.apply(lambda x: ' '.join([lemmatizer.lemmatize(y) for y in x.split()]))
 
-        df = df.loc[df['label'] == 1]        # just for audio recording
+        df = df.loc[df['label'] == 0]        # just for audio recording
 
         df.to_csv(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv'), index=False, encoding='utf-8')
     else:
