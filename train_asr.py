@@ -85,82 +85,11 @@ def train(model, train_dataloader, device, distance, optim, epoch, lr_scheduler,
 
         # ==== forward ====
         #output, unpadded_output_lens = model(spectrograms)
-        output, audio_embedding = model(spectrograms)
+        output = model(x=spectrograms, this_model_train=True)
         #output = output.transpose(1, 0)
         output = nn.LogSoftmax(dim=2)(output)
         output = output.transpose(0, 1)     # reshape to '(input_sequence_len, batch_size, n_classes)' as described in 'https://pytorch.org/docs/master/generated/torch.nn.CTCLoss.html'
-        #print('(0) output_shape: ', output.shape)
-        #print('input_lens: ', input_lens, ' | target_lens: ', target_lens)
         loss = distance(output, targets, input_lens, target_lens)
-
-        # adjust word wise targets
-        adjusted_targets = []
-        #target_word_i = 0
-        #print('UNPADDED_OUTPUTS_LENS_LEN: ', unpadded_output_lens.shape[0])
-        #print('WORDWISE_TARGET_LEN: ', sum(len(row) for row in word_wise_target))
-        #tensor_len_delta = sum(len(row) for row in word_wise_target) - unpadded_output_lens.shape[0]
-        #if tensor_len_delta > 0:
-            #output = torch.cat((output, torch.ones(tensor_len_delta, output.shape[1], 9896).to(device)))
-            #output = torch.cat((output, torch.ones(output.shape[0], tensor_len_delta, 9896).to(device)), dim=1)
-            #output = torch.cat((output, torch.zeros(output.shape[0], tensor_len_delta, 9897).to(device)), dim=1)
-            #unpadded_output_lens = torch.cat((unpadded_output_lens, torch.zeros(tensor_len_delta, dtype=torch.long))).to(device)
-        #print('(1) output_shape: ', output.shape)
-        #print('PADDING_LEN: ', torch.max(unpadded_output_lens), ' | N_WORDS: ', len(unpadded_output_lens), ' | LONGEST_WORD_INDEX: ', torch.argmax(unpadded_output_lens))
-        #for target in word_wise_target:
-            #for word_index in target:
-                #print(word_index)
-                #adjusted_targets.append(torch.Tensor([word_index]*unpadded_output_lens[target_word_i]))
-                #adjusted_targets.append(torch.Tensor([word_index]))
-                #target_word_i += 1
-        # pad last tensor to desired padding length (otherwise error in case n_predicted_words > n_target_words and
-        # torch.argmax(unpadded_output_lens) > n_target_words
-        # [-> predicted_words(padding_len) would not be target_words(padding_len)])
-        #adjusted_targets[-1] = torch.cat((adjusted_targets[-1], torch.zeros((torch.max(unpadded_output_lens)
-         #                                                                    - adjusted_targets[-1].shape[0]))))
-        #print('FINAL_TARGET_WORD_I: ', target_word_i)
-        #adjusted_targets = torch.stack(adjusted_targets).to(device)
-        #adjusted_targets = torch.nn.utils.rnn.pad_sequence(sequences=adjusted_targets, batch_first=True).to(device)
-
-        #output.transpose_(1, 0)
-        #adjusted_targets = adjusted_targets.transpose(1, 0)
-        #print('output_shape: ', output.shape)
-        #print('adjusted_targets_shape: ', adjusted_targets.shape)
-        #print('adjusted_targets: ', adjusted_targets)
-
-        #loss = WSL(predictions=output, targets=adjusted_targets, device=device, infinity_replacement=1.0)
-
-        #print(torch.zeros((1, (3))).shape)
-        #output_shape_1: torch.Size([62, 1, 9896])
-        #target_shape_1: torch.Size([1, 62])
-        #tensor_len_delta = adjusted_targets.shape[0] - output.shape[1]
-        #print(f'TARGET_LEN: {adjusted_targets.shape[1]} | OUTPUT_LEN: {output.shape[0]} | DELTA_LEN: {tensor_len_delta}')
-        #print(tensor_len_delta)
-        #print('WORD_WISE_TARGET: ', word_wise_target)
-        #if tensor_len_delta > 0:
-            #output = torch.cat((output, torch.ones(tensor_len_delta, 1, 9896).to(device)))
-          #  output = torch.cat((output, torch.ones(1, tensor_len_delta, 9897).to(device)), dim=1)
-
-        #print(tensor_len_delta)
-        #if tensor_len_delta < 0:
-         #   adjusted_targets = torch.cat((adjusted_targets, torch.zeros(((-tensor_len_delta), adjusted_targets.shape[1])).to(device)), dim=0)
-        # (batch_size, padded_len)
-        #adjusted_targets = adjusted_targets.transpose(1, 0)
-
-        #output = output.transpose(1, 0)     # (batch_size, padded_len, vocab_size)
-        #print('output_shape: ', output.shape)
-        #print('(0) adjusted_targets_shape: ', adjusted_targets.shape)
-        #print('(2) output_shape: ', output.shape)
-        #print('ADJUSTED_TARGETS: ', adjusted_targets.shape)
-        #loss = distance(output.transpose(1, 0), adjusted_targets.transpose(1, 0), (output.shape[1], ), (adjusted_targets.shape[0 ], ))
-        #loss = distance(output.transpose(1, 0).squeeze(0), adjusted_targets.squeeze(0).long())
-        #output = output.contiguous().view(-1, output.shape[-1])
-        #adjusted_targets = adjusted_targets.view(-1)
-        #print('(1) adjusted_targets_shape: ', adjusted_targets.shape)
-        #print('(3) output_shape: ', output.shape)
-        #loss = distance(output.squeeze(0), adjusted_targets.long().squeeze(1))
-        #loss = distance(output.transpose(1, 0).squeeze(0), adjusted_targets.squeeze(0).long())
-
-        #print(output)
 
         # ==== backward ====
         optim.zero_grad()
@@ -180,11 +109,7 @@ def train(model, train_dataloader, device, distance, optim, epoch, lr_scheduler,
         if i % 200 == 0:
             average_loss = average_meter.average()
             train_losses.append(average_loss)
-            print(f'Loss: {average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} \n'
-                  f'Predicted indices: {torch.unique(torch.argmax(output, dim=2))} '
-                  f'(Unique_len: {torch.unique(torch.argmax(output, dim=2)).shape[0]}) | '
-                  f'Target indices: {torch.unique(adjusted_targets)} '
-                  f'(Unique_len: {torch.unique(adjusted_targets).shape[0]})')
+            print(f'Loss: {average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr}')
 
     return lr
 
@@ -205,7 +130,7 @@ def test(model, test_dataloader, device, distance):
             #targets = targets.to(device)
 
             # ==== forward ====
-            output = model(spectrograms)
+            output = model(spectrograms, this_model_train=True)
             output = nn.LogSoftmax(dim=2)(output)
             #output = output.transpose(0, 1)     # reshape to '(input_sequence_len, batch_size, n_classes)' as described in 'https://pytorch.org/docs/master/generated/torch.nn.CTCLoss.html'
 
@@ -236,20 +161,20 @@ def test(model, test_dataloader, device, distance):
 
 
 def main(root, train_url='train-clean-100', test_url='test-clean'):
-    version = 4
+    version = 5
     CONTINUE_TRAINING = False
     TRAIN_SPEECH_MODEL = True
     #TRAIN_DECODER_MODEL = False
 
-    n_epochs = 3
+    n_epochs = 20
 
     hyper_params_speech = {
         # ==== training hyper parameters ====
         'i_lr': 0.0005,
-        'n_batches_warmup': 4200,
-        'batch_size': 2,
+        'n_batches_warmup': 420,
+        'batch_size': 15,
         # ==== model hyper parameters ====
-        'n_res_cnn_layers': 3,
+        'n_res_cnn_layers': 4,
         'n_bi_gru_layers': 5,
         'bi_gru_dim': 512,
         'n_classes': 29,
@@ -347,7 +272,7 @@ def main(root, train_url='train-clean-100', test_url='test-clean'):
         if TRAIN_SPEECH_MODEL:
             lr = train(model=speech_model, train_dataloader=train_dataloader, device=device, distance=distance,
                        optim=optim, epoch=epoch, lr_scheduler=lr_scheduler, dataset=train_dataset)
-            test(model=speech_model, test_dataloader=test_dataloader, device=device, distance=distance)
+            # test(model=speech_model, test_dataloader=test_dataloader, device=device, distance=distance)
 
             torch.save(speech_model, f'models/asr/models/speech_model_{version}.{epoch}.pth')
             torch.save({

@@ -21,7 +21,6 @@ class LayerNorm(nn.Module):
         self.layer_norm = nn.LayerNorm(n_features)
 
     def forward(self, x):
-        print(x.device)
         x = x.transpose(2, 3)
         x = self.layer_norm(x)
 
@@ -149,7 +148,7 @@ class SpeechModel(nn.Module):
 
         return x
 
-    def forward(self, x):
+    def forward(self, x, this_model_train):
 
         x = self.init_conv2d(x)
         x = self.residual_cnn_general(x)
@@ -161,7 +160,7 @@ class SpeechModel(nn.Module):
         #print('is_leaf: ', audio_embedding_input.is_leaf)
         #print('audio_embedding_input: ', audio_embedding_input)
         #print('x.data: ', x.data)
-        if not self.training:
+        if not self.training and not this_model_train:
             mp.set_start_method('spawn')
 
             audio_embedding_return = mp.Queue()
@@ -184,6 +183,10 @@ class SpeechModel(nn.Module):
         x = self.bi_gru_nn(x)
 
         x = self.classifier(x)
+
+        if this_model_train is True:        # for seperatly training the ASR model
+            return x
+
         x = nn.Softmax(dim=2)(x) * 1.0e3        # Why? Comment out?
 
         if not self.training:
@@ -424,9 +427,9 @@ class CustomTransformerDecoderLayer(nn.Module):
         return tgt
 
 
-class TransformerEncoder(nn.Module):
+class Transformer(nn.Module):
     def __init__(self, n_tokens, d_model, n_heads, n_hid, n_layers, dropout_p=0.5):
-        super(TransformerEncoder, self).__init__()
+        super(Transformer, self).__init__()
 
         self.word_embedding = nn.Embedding(num_embeddings=n_tokens, embedding_dim=d_model)
         # TODO: audio spectrogram embedding
@@ -469,3 +472,45 @@ class TransformerEncoder(nn.Module):
         output = self.transformer(src=src, tgt=tgt, tgt_mask=tgt_mask)
 
         return output
+
+
+class IronyClassifier(nn.Module):
+    def __init__(self, batch_size, n_tokens, d_model, d_context, n_heads, n_hid, n_layers, dropout_p=0.5):
+        super(IronyClassifier, self).__init__()
+
+        self.batch_size = batch_size
+        self.d_model = d_model
+        self.d_context = d_context
+
+        self.word_embedding = nn.Embedding(num_embeddings=n_tokens, embedding_dim=d_model)
+        self.positional_encoder = PositionalEncoding(d_model, dropout_p)
+
+        # encoder definition
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
+                                                   dropout=dropout_p, activation='gelu')
+        transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+
+    def generate_src_mask(self, utterance_lens: tuple) -> torch.Tensor:
+        max_len = max(utterance_lens)
+        # src_mask = torch.Tensor(([0] * utterance_lens[0]) + ([float('-inf')] * (1 - utterance_lens[0])))
+
+        src_mask = []
+
+        for current_len in utterance_lens:
+            src_mask.append(([0] * current_len) + ([float('-inf')] * (max_len - current_len)))
+
+        src_mask = torch.Tensor(src_mask)
+
+        return src_mask
+
+    def generate_context(self) -> torch.Tensor:
+        context_tensor = torch.zeros((self.d_context, self.batch_size))
+
+        return context_tensor
+
+    def forward(self, src: torch.Tensor, utterance_lens: tuple, context_tensor: torch.Tensor):
+        # get src mask
+        src_mask = self.generate_src_mask(utterance_lens=utterance_lens)
+        src = self.word_embedding(src) * math.sqrt(self.d_model)
+        src = self.positional_encoder(src)
+        out = self.transformer_encoder(src, src_mask)
