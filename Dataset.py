@@ -1,4 +1,4 @@
-import torchaudio
+# import torchaudio
 import torch
 import torch.nn as nn
 import numpy as np
@@ -9,7 +9,7 @@ import os
 import re
 import random as rnd
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
 class Dataset:
@@ -220,18 +220,30 @@ class DatasetASRDecoder:
 
 
 class IronyClassificationDataset:
-    def __init__(self, top_k=1.0e5, root='data/irony_data'):
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
         self.root = root
 
-        self.df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-final.csv'))
+        self.df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted.csv'))
 
         # self.non_sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/non_sarcastic'))
         # self.sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/sarcastic'))
 
         # TODO: self.vocabulary_dict = ...
-        with open(os.path.join(root, 'vocabulary.json', 'r')) as vocabulary_file:
+        with open(os.path.join(root, 'vocabulary.json'), 'r') as vocabulary_file:
             vocabulary_dict = json.load(vocabulary_file)
-        self.vocabulary_dict = dict(list(vocabulary_dict.items())[:top_k])
+        self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
+        self.vocabulary_dict['ukw'] = '10001'
+
+        if mode == 'train':
+            self.start_index = 0
+            self.length = int(3 * (len(self.df) / 5))
+        elif mode == 'valid':
+            self.start_index = int(3 * (len(self.df) / 5))
+            self.length = int(1 * (len(self.df) / 5))
+        elif mode == 'test':
+            self.start_index = int(4 * (len(self.df) / 5))
+            self.length = int(1 * (len(self.df) / 5))
 
         """if mode == 'train':
             self.audio_transforms = nn.Sequential(
@@ -243,40 +255,55 @@ class IronyClassificationDataset:
             self.audio_transforms = torchaudio.transforms.MelSpectrogram()"""
 
     def text_to_indices(self, utterance):
-        indices = []
-        for word in utterance:
+        indices = [10005]       # '<cls>' token
+        for word in utterance.split():
+            # print(word)
             # TODO
-            indices.append(self.vocabulary_dict[word])
+            try:
+                indices.append(int(self.vocabulary_dict[word]))
+            except KeyError:
+                indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
 
         return indices
 
     def __getitem__(self, index):
-        row = self.df[[index]]
+        try:
+            index += self.start_index       # to isolate data for train, validation and test purpose
 
-        """if row['label'] == 1:
-            audio_file_path = os.path.join(self.root, f'Audio/sarcastic/{os.listdir(os.path.join(self.root, "Audio/sarcastic"))[row["file_index"]]}')
-        else:
-            audio_file_path = os.path.join(self.root, f'Audio/non_sarcastic/{os.listdir(os.path.join(self.root, "Audio/non_sarcastic"))[row["file_index"]]}')
-        waveform, sample_rate = torchaudio.load(audio_file_path)
-        spectrogram = self.audio_transforms(waveform).squeeze(0).transpose(0, 1)"""
+            # row = self.df[[index]]
+            row = self.df.loc[index]
+            # print('row: ', row['label'])
 
-        utterance = row['comment']
-        utterance = torch.Tensor(self.text_to_indices(utterance=utterance.lower()))
-        utterance_len = utterance.shape[0]
+            """if row['label'] == 1:
+                audio_file_path = os.path.join(self.root, f'Audio/sarcastic/{os.listdir(os.path.join(self.root, "Audio/sarcastic"))[row["file_index"]]}')
+            else:
+                audio_file_path = os.path.join(self.root, f'Audio/non_sarcastic/{os.listdir(os.path.join(self.root, "Audio/non_sarcastic"))[row["file_index"]]}')
+            waveform, sample_rate = torchaudio.load(audio_file_path)
+            spectrogram = self.audio_transforms(waveform).squeeze(0).transpose(0, 1)"""
 
-        parent_utterance = row['parent_comment']
-        parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance.lower()))
-        parent_utterance_len = parent_utterance.shape[0]
+            utterance = row['comment']
+            utterance = torch.Tensor(self.text_to_indices(utterance=utterance.lower()))
+            utterance_len = utterance.shape[0]
 
-        # target = row['target']
-        # target = torch.Tensor(target)
+            parent_utterance = row['parent_comment']
+            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance.lower()))
+            parent_utterance_len = parent_utterance.shape[0]
 
-        target = row['label']
-        target = torch.Tensor(target)
+            # target = row['target']
+            # target = torch.Tensor(target)
 
-        # return spectrogram, utterance, target
+            target = row['label']
+            # target = torch.Tensor(target)
 
-        return utterance, utterance_len, parent_utterance, parent_utterance_len, target
+            # return spectrogram, utterance, target
+
+            return utterance, utterance_len, parent_utterance, parent_utterance_len, target
+
+        except AttributeError:      # if utterance or parent utterance is 'nan'
+            return self.__getitem__((index - 1))
+
+    def __len__(self):
+        return self.length
 
 
 #x = DatasetASRDecoder(root='data', url='train-clean-100')

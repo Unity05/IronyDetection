@@ -371,7 +371,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('position_encoding', position_encoding)        # position encoding is not trainable
 
     def forward(self, x):
-        x = x + self.positional_encoding[:x.shape[0]]
+        x = x + self.position_encoding[:x.shape[0]]
 
         return x
 
@@ -482,13 +482,18 @@ class IronyClassifier(nn.Module):
         self.d_model = d_model
         self.d_context = d_context
 
-        self.word_embedding = nn.Embedding(num_embeddings=n_tokens, embedding_dim=d_model)
+        self.context_fc_0 = nn.Linear(in_features=self.d_context, out_features=self.d_context)
+
+        self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
 
         # encoder definition
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
+        encoder_layer = nn.TransformerEncoderLayer(d_model=(d_model + d_context), nhead=n_heads, dim_feedforward=n_hid,
                                                    dropout=dropout_p, activation='gelu')
-        transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+
+        self.classifier = nn.Linear(in_features=(d_model + d_context), out_features=1)
+        self.sigmoid = nn.Sigmoid()
 
     def generate_src_mask(self, utterance_lens: tuple) -> torch.Tensor:
         max_len = max(utterance_lens)
@@ -504,13 +509,36 @@ class IronyClassifier(nn.Module):
         return src_mask
 
     def generate_context(self) -> torch.Tensor:
-        context_tensor = torch.zeros((self.d_context, self.batch_size))
+        context_tensor = torch.zeros((self.batch_size, self.d_context))
 
         return context_tensor
 
     def forward(self, src: torch.Tensor, utterance_lens: tuple, context_tensor: torch.Tensor):
+        # print('forward')
+        # print('src_shape: ', src.shape)
         # get src mask
         src_mask = self.generate_src_mask(utterance_lens=utterance_lens)
-        src = self.word_embedding(src) * math.sqrt(self.d_model)
+        src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
         src = self.positional_encoder(src)
+
+        # print(context_tensor.squeeze(0).shape)
+        # print(context_tensor.device)
+        context_tensor = self.context_fc_0(context_tensor.squeeze(0))
+
+        # print(context_tensor.shape)
+        context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
+        # print(context_tensor.device)
+        # print(src.shape[0])
+
+        # print('src_shape: ', src.shape)
+        # print('context_tensor_shape: ', context_tensor.shape)
+        src = torch.cat((context_tensor, src), dim=2)       # concat at feature number dimension
+        # print('src_shape: ', src.shape)
+        torch.autograd.set_detect_anomaly = True
+        # print('src_mask_shape: ', src_mask.shape)
+        src_mask = None
+
         out = self.transformer_encoder(src, src_mask)
+        out = self.sigmoid(self.classifier(out[0]))
+
+        return out, context_tensor[0]
