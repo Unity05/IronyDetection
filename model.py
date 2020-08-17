@@ -474,6 +474,33 @@ class Transformer(nn.Module):
         return output
 
 
+class ContextModel(nn.Module):
+    def __init__(self, d_model, d_context):
+        super(ContextModel, self).__init__()
+
+        self.d_context = d_context
+
+        self.word_wise_fc_0 = nn.Linear(in_features=d_model, out_features=d_context)
+
+    def forward(self, word_embedding, utterance_lengths):
+        word_embedding = self.word_wise_fc_0(word_embedding)
+
+        word_embedding = word_embedding.permute(1, 2, 0)    # new shape: (batch_size, d_context, sequence_length)
+
+        weight_list = []
+        sequence_length = word_embedding.shape[2]
+        for batch_i in range(word_embedding.shape[0]):
+            weight_list.append([[(1 / utterance_lengths[batch_i])]] * sequence_length)
+        weight_tensor = torch.Tensor(weight_list).to(next(self.parameters()).device)
+        # print('word_embedding_shape: ', word_embedding.shape)
+        # print('weight_tensor_shape: ', weight_tensor.shape)
+
+        context_embedding = word_embedding @ weight_tensor
+        context_embedding = context_embedding.squeeze(2)        # new shape: (batch_size, d_context)
+
+        return context_embedding
+
+
 class IronyClassifier(nn.Module):
     def __init__(self, batch_size, n_tokens, d_model, d_context, n_heads, n_hid, n_layers, dropout_p=0.5):
         super(IronyClassifier, self).__init__()
@@ -482,7 +509,7 @@ class IronyClassifier(nn.Module):
         self.d_model = d_model
         self.d_context = d_context
 
-        self.context_fc_0 = nn.Linear(in_features=self.d_context, out_features=self.d_context)
+        # self.context_fc_0 = nn.Linear(in_features=self.d_context, out_features=self.d_context)
 
         self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
@@ -494,6 +521,8 @@ class IronyClassifier(nn.Module):
 
         self.classifier = nn.Linear(in_features=(d_model + d_context), out_features=1)
         self.sigmoid = nn.Sigmoid()
+
+        self.context_embedding = ContextModel(d_model=d_model, d_context=d_context)
 
     def generate_src_mask(self, utterance_lens: tuple) -> torch.Tensor:
         max_len = max(utterance_lens)
@@ -519,11 +548,13 @@ class IronyClassifier(nn.Module):
         # get src mask
         src_mask = self.generate_src_mask(utterance_lens=utterance_lens)
         src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
+        word_embedding = src
+        # print(src.shape)
         src = self.positional_encoder(src)
 
-        # print(context_tensor.squeeze(0).shape)
+        # print(context_tensor.shape)
         # print(context_tensor.device)
-        context_tensor = self.context_fc_0(context_tensor.squeeze(0))
+        # context_tensor = self.context_fc_0(context_tensor.squeeze(0))
 
         # print(context_tensor.shape)
         context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
@@ -532,7 +563,7 @@ class IronyClassifier(nn.Module):
 
         # print('src_shape: ', src.shape)
         # print('context_tensor_shape: ', context_tensor.shape)
-        src = torch.cat((context_tensor, src), dim=2)       # concat at feature number dimension
+        src = torch.cat((src, context_tensor), dim=2)       # concat at feature number dimension
         # print('src_shape: ', src.shape)
         torch.autograd.set_detect_anomaly = True
         # print('src_mask_shape: ', src_mask.shape)
@@ -541,4 +572,7 @@ class IronyClassifier(nn.Module):
         out = self.transformer_encoder(src, src_mask)
         out = self.sigmoid(self.classifier(out[0]))
 
-        return out, context_tensor[0]
+        new_context_tensor = self.context_embedding(word_embedding=word_embedding, utterance_lengths=utterance_lens)
+        # print('new_context_tensor_shape: ', new_context_tensor.shape)
+
+        return out, new_context_tensor

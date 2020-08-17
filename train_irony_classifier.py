@@ -6,6 +6,8 @@ from helper_functions import AverageMeter, CosineLearningRateScheduler
 from Dataset import IronyClassificationDataset
 from model import IronyClassifier
 
+import warnings
+
 
 train_losses = []
 valid_losses = []
@@ -15,83 +17,104 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train(model, train_dataloader, device, batch_size, distance, optim, epoch, lr_scheduler):
+def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler):
     model.train()
     average_meter = AverageMeter()
 
     for i, data in enumerate(train_dataloader):
-        # print('i: ', i)
-        utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-        utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=10002).to(device)
-        parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False, padding_value=10002).to(device)
-        target = torch.Tensor(target).to(device)
-
-        utterances = [parent_utterance, utterance]
-        utterance_lens = [utterance_len, parent_utterance_len]
-        targets = [torch.zeros((batch_size), dtype=torch.float32), target]
-
-        # ==== forward ====
-        context_tensor = model.generate_context().to(device)
-        loss = 0
-        for i_2 in range(2):
-            output, context_tensor = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2], context_tensor=context_tensor)
-
-            # print('output_shape: ', output.shape)
-            # print('target_shape: ', targets[i_2].shape)
-            # print('output: ', output.squeeze(1))
-            # print('target: ', targets[i_2])
-            # print('output_index: ', torch.argmax(output, dim=1).float())
-            # print('output_type: ', output.dtype)
-            # print('target_type: ', target.dtype)
-            # loss = distance(torch.argmax(output, dim=1).float(), target)
-            loss += distance(output.squeeze(1), targets[i_2].to(device))
-
-        # ==== backward ====
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
-
-        # ==== adjustments ====
-        lr = lr_scheduler.new_lr()
-        for param_group in optim.param_groups:
-            param_group['lr'] = lr
-
-        # ==== log ====
-        if loss.item() != 0:
-            average_meter.step(loss=loss.item())
-        if i % 4200 == 0:
-            average_loss = average_meter.average()
-            train_losses.append(average_loss)
+        try:
             # print('i: ', i)
-            print(f'Loss: {average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr}')
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
+            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=10002).to(device)
+            parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False, padding_value=10002).to(device)
+            target = torch.Tensor(target).to(device)
+
+            utterances = [parent_utterance, utterance]
+            utterance_lens = [utterance_len, parent_utterance_len]
+            targets = [torch.zeros((batch_size), dtype=torch.float32), target]
+
+            # ==== forward ====
+            context_tensor = model.generate_context().to(device)
+            loss = 0
+            for i_2 in range(2):
+                output, context_tensor = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2], context_tensor=context_tensor)
+
+                # print('output_shape: ', output.shape)
+                # print('target_shape: ', targets[i_2].shape)
+                # print('output: ', output.squeeze(1))
+                # print('target: ', targets[i_2])
+                # print('output_index: ', torch.argmax(output, dim=1).float())
+                # print('output_type: ', output.dtype)
+                # print('target_type: ', target.dtype)
+                # loss = distance(torch.argmax(output, dim=1).float(), target)
+                loss += distance(output.squeeze(1), targets[i_2].to(device))
+
+            # ==== backward ====
+            optim.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
+            optim.step()
+
+            # loss.detach_()
+
+            # ==== adjustments ====
+            lr = lr_scheduler.new_lr()
+            for param_group in optim.param_groups:
+                param_group['lr'] = lr
+
+            # ==== log ====
+            # print(torch.cuda.memory_stats())
+            # print('Allocated: ', torch.cuda.memory_allocated() + torch.cuda.memory_cached(), ' | Cached: ', torch.cuda.memory_cached())
+
+            if loss.item() != 0:
+                average_meter.step(loss=loss.item())
+            if i % 4200 == 0:
+                average_loss = average_meter.average()
+                train_losses.append(average_loss)
+                # print('i: ', i)
+                print(f'Loss: {average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr}')
+        except RuntimeError:
+            warnings.warn(message='CUDA OOM. Skipping current iteration. (I know that is not a good style - but meh.)',
+                          category=ResourceWarning)
+
+        torch.cuda.empty_cache()
 
     return lr
 
 
-def valid(model, valid_dataloader, device, distance, epoch):
+def valid(model, valid_dataloader, device, batch_size, distance, epoch):
     model.eval()
     average_meter = AverageMeter()
 
     for i, data in enumerate(valid_dataloader):
-        utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-        utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False).to(device)
-        parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False).to(device)
-        target = target.to(device)
+        try:
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
+            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=10002).to(device)
+            parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False,
+                                                         padding_value=10002).to(device)
+            target = torch.Tensor(target).to(device)
 
-        utterances = [parent_utterance, utterance]
-        utterance_lens = [utterance_len, parent_utterance_len]
+            utterances = [parent_utterance, utterance]
+            utterance_lens = [utterance_len, parent_utterance_len]
+            targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
-        # ==== forward ====
-        context_tensor = model.generate_context_tensor()
-        for i in range(2):
-            output, context_tensor = model(src=utterances[i], utterance_lens=utterance_lens[i],
-                                           context_tensor=context_tensor)
+            # ==== forward ====
+            context_tensor = model.generate_context().to(device)
+            loss = 0
+            for i_2 in range(2):
+                output, context_tensor = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2],
+                                               context_tensor=context_tensor)
 
-        loss = distance(output, target)
+                loss += distance(output.squeeze(1), targets[i_2].to(device))
 
-        # ==== log ====
-        if loss.item() != 0:
-            average_meter.step(loss=loss.item())
+            # ==== log ====
+            if loss.item() != 0:
+                average_meter.step(loss=loss.item())
+        except RuntimeError:
+            warnings.warn(message='CUDA OOM. Skipping current iteration. (I know that is not a good style - but meh.)',
+                          category=ResourceWarning)
+
+        torch.cuda.empty_cache()
 
     average_loss = average_meter.average()
     valid_losses.append(average_loss)
@@ -103,7 +126,7 @@ def main(version):
         'n_epochs': 10,
 
         'vocabulary_size': 1.0e5,
-        'batch_size': 2,
+        'batch_size': 15,
 
         'd_model': 512,
         'd_context': 128,
@@ -112,8 +135,9 @@ def main(version):
         'n_layers': 6,
         'dropout_p': 0.1,
 
-        'i_lr': 1.0e-5,
-        'n_batches_warmup': 1300
+        'max_norm': 0.25,
+        'i_lr': 1.0e-6,
+        'n_batches_warmup': 8400
     }
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -167,8 +191,10 @@ def main(version):
 
     for i_epoch in range(hyper_params['n_epochs']):
         lr = train(model=model, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
-                   distance=distance, optim=optim, epoch=i_epoch, lr_scheduler=lr_scheduler)
-        valid(model=model, valid_dataloader=valid_dataloader, device=device, distance=distance, epoch=i_epoch)
+                   distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
+                   lr_scheduler=lr_scheduler)
+        # valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
+          #     distance=distance, epoch=i_epoch)
 
         # save
 

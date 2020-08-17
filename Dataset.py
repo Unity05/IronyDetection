@@ -221,9 +221,10 @@ class DatasetASRDecoder:
 
 class IronyClassificationDataset:
     def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+        self.mode = mode
         self.root = root
 
-        self.df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted.csv'))
+        self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}.csv'))
 
         # self.non_sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/non_sarcastic'))
         # self.sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/sarcastic'))
@@ -235,15 +236,17 @@ class IronyClassificationDataset:
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
         self.vocabulary_dict['ukw'] = '10001'
 
-        if mode == 'train':
+        """if mode == 'train':
             self.start_index = 0
-            self.length = int(3 * (len(self.df) / 5))
+            # self.length = int(3 * (len(self.df) / 5))
         elif mode == 'valid':
             self.start_index = int(3 * (len(self.df) / 5))
-            self.length = int(1 * (len(self.df) / 5))
+            # self.length = int(1 * (len(self.df) / 5))
+            print('Hi.')
         elif mode == 'test':
             self.start_index = int(4 * (len(self.df) / 5))
-            self.length = int(1 * (len(self.df) / 5))
+            # self.length = int(1 * (len(self.df) / 5))
+        # print(self.length)"""
 
         """if mode == 'train':
             self.audio_transforms = nn.Sequential(
@@ -268,7 +271,10 @@ class IronyClassificationDataset:
 
     def __getitem__(self, index):
         try:
-            index += self.start_index       # to isolate data for train, validation and test purpose
+            # print('Start index: ', self.start_index)
+            # print('Length: ', self.length)
+            # print('Index: ', index)
+            # index += self.start_index       # to isolate data for train, validation and test purpose
 
             # row = self.df[[index]]
             row = self.df.loc[index]
@@ -303,7 +309,8 @@ class IronyClassificationDataset:
             return self.__getitem__((index - 1))
 
     def __len__(self):
-        return self.length
+        # print('Length: ', self.length)
+        return len(self.df)
 
 
 #x = DatasetASRDecoder(root='data', url='train-clean-100')

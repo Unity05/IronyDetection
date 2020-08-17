@@ -206,6 +206,24 @@ def generate_vocabulary(root='data'):
         json.dump(vocabulary, vocabulary_file)
 
 
+def split_data(root='data/irony_data', p_train=0.7, p_valid=0.10, p_test=0.20):
+    df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted.csv'))
+    df_len = len(df)
+    train_len = int(df_len * p_train)
+    valid_len = int(df_len * p_valid)
+    test_len = int(df_len * p_test)
+
+    df_train = df.loc[:train_len]
+    df_valid = df.loc[train_len:(train_len + valid_len)]
+    df_test = df.loc[(train_len + valid_len):(train_len + valid_len + test_len)]
+    # print(len(df))
+
+    df_train.to_csv(os.path.join(root, 'train-balanced-sarcasm-train.csv'), index=False, encoding='utf-8')
+    df_valid.to_csv(os.path.join(root, 'train-balanced-sarcasm-valid.csv'), index=False, encoding='utf-8')
+    df_test.to_csv(os.path.join(root, 'train-balanced-sarcasm-test.csv'), index=False, encoding='utf-8')
+
+
 # print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
-generate_vocabulary(root='data')
+# generate_vocabulary(root='data')
 # update_data(root='data')
+split_data()
