@@ -224,6 +224,6 @@ def split_data(root='data/irony_data', p_train=0.7, p_valid=0.10, p_test=0.20):
 
 
 # print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
-# generate_vocabulary(root='data')
+generate_vocabulary(root='data')
 # update_data(root='data')
 split_data()

@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 
+import bcolz
+import numpy as np
+
 import math
 import warnings
 from typing import Optional, Any
@@ -427,51 +430,70 @@ class CustomTransformerDecoderLayer(nn.Module):
         return tgt
 
 
-class Transformer(nn.Module):
-    def __init__(self, n_tokens, d_model, n_heads, n_hid, n_layers, dropout_p=0.5):
-        super(Transformer, self).__init__()
+class CustomTransformerEncoder(nn.Module):
+    __constants__ = ['norm']
 
-        self.word_embedding = nn.Embedding(num_embeddings=n_tokens, embedding_dim=d_model)
-        # TODO: audio spectrogram embedding
-        self.positional_encoder = PositionalEncoding(d_model, dropout_p)
+    def __init__(self, encoder_layer, n_layers, norm=None):
+        super(CustomTransformerEncoder, self).__init__()
 
-        # encoder definition
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
-                                                   dropout=dropout_p, activation='gelu')
-        transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        self.layers = nn.modules.transformer._get_clones(module=encoder_layer, N=n_layers)
+        self.n_layers = n_layers
+        self.norm = norm
 
-        # decoder definition
-        decoder_layer = CustomTransformerDecoderLayer(d_model=d_model, n_heads=n_heads, d_feedforward=n_hid,
-                                                      dropout_p=dropout_p, activation='GELU')
-        transformer_decoder = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=6)
+    def forward(self, src: torch.Tensor, mask: Optional[torch.Tensor] = None,
+                src_key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        output = src
+        attn_weights_list = []
 
-        self.transformer = nn.Transformer(d_model=d_model, nhead=n_heads, num_encoder_layers=6, num_decoder_layers=6,
-                                          dim_feedforward=n_hid, dropout=dropout_p, activation='GELU',
-                                          custom_encoder=transformer_encoder, custom_decoder=transformer_decoder)
+        for mod in self.layers:
+            output, attn_weights = mod(src=output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+            # print(attn_weights.shape)
+            attn_weights_list.append(attn_weights)
 
-    def generate_decoder_tgt_mask(self, T: int) -> torch.Tensor:
-        """
-        Generates a triangular target mask for transformer decoder input.
+        if self.norm is not None:
+            output = self.norm(output)
 
-        Args:
-            T (int): target sequence length.
+        # print('[0] shape: ', attn_weights_list[0].shape)
+        return output, attn_weights_list
 
-        Returns:
-            (torch.Tensor) triangular target mask of shape (T, T).
-        """
 
-        mask = (torch.triu(torch.ones((T, T))) == 0).transpose(1, 0)
-        mask = mask.float().masked_fill(mask == 1, float('-inf'))
+class CustomTransformerEncoderLayer(nn.Module):
+    def __init__(self, d_model, n_heads, d_feedforward=2048, dropout_p=0.1, activation='gelu'):
+        super(CustomTransformerEncoderLayer, self).__init__()
 
-        return mask
+        self.self_attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=n_heads)
+        self.dropout_attn = nn.Dropout(p=dropout_p)
 
-    def forward(self, src: torch.Tensor, tgt: torch.Tensor, tgt_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if tgt_mask is None or tgt_mask.shape[0] is not tgt.shape[0]:
-            tgt_mask = self.generate_decoder_tgt_mask(T=tgt.shape[0]).to(self.device)
+        self.norm_0 = nn.LayerNorm(d_model)
 
-        output = self.transformer(src=src, tgt=tgt, tgt_mask=tgt_mask)
+        self.fc_0 = nn.Linear(in_features=d_model, out_features=d_feedforward)
+        self.dropout_0 = nn.Dropout(p=dropout_p)
+        self.fc_1 = nn.Linear(in_features=d_feedforward, out_features=d_model)
+        self.dropout_1 = nn.Dropout(p=dropout_p)
 
-        return output
+        self.norm_1 = nn.LayerNorm(d_model)
+
+        self.activation_fn = nn.modules.transformer._get_activation_fn(activation=activation)
+
+    def __setstate__(self, state):
+        if 'activation' not in state:
+            warnings.warn(message="'state' does not contain 'activation'. 'nn.GELU()' is used as default.")
+            state['activation'] = nn.GELU()
+        super(CustomTransformerEncoderLayer, self).__setstate__(state)
+
+    def forward(self, src: torch.Tensor, src_mask: Optional[torch.Tensor] = None,
+                src_key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        src2, attn_weights = self.self_attn(query=src, key=src, value=src, key_padding_mask=src_key_padding_mask,
+                                            need_weights=True, attn_mask=src_mask)
+        src = src + self.dropout_attn(src2)
+        src = self.norm_0(src)
+        src2 = self.fc_1(self.dropout_0(self.activation_fn(self.fc_0(src))))
+        src = src + self.dropout_1(src2)
+        src = self.norm_1(src)
+
+        # print(attn_weights.shape)
+
+        return src, attn_weights
 
 
 class ContextModel(nn.Module):
@@ -483,7 +505,7 @@ class ContextModel(nn.Module):
         self.word_wise_fc_0 = nn.Linear(in_features=d_model, out_features=d_context)
 
     def forward(self, word_embedding, utterance_lengths):
-        word_embedding = self.word_wise_fc_0(word_embedding)
+        word_embedding = self.word_wise_fc_0(word_embedding)        # shape: (sequence_length, batch_size, d_model)
 
         word_embedding = word_embedding.permute(1, 2, 0)    # new shape: (batch_size, d_context, sequence_length)
 
@@ -511,18 +533,41 @@ class IronyClassifier(nn.Module):
 
         # self.context_fc_0 = nn.Linear(in_features=self.d_context, out_features=self.d_context)
 
-        self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
+        # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
+        # print(self.word_embedding.state_dict()['weight'].shape)
+        self.word_embedding = self.load_word_embedding(trainable=False)
+        print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
 
         # encoder definition
-        encoder_layer = nn.TransformerEncoderLayer(d_model=(d_model + d_context), nhead=n_heads, dim_feedforward=n_hid,
-                                                   dropout=dropout_p, activation='gelu')
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        # encoder_layer = nn.TransformerEncoderLayer(d_model=(d_model + d_context), nhead=n_heads, dim_feedforward=n_hid,
+          #                                          dropout=dropout_p, activation='gelu')
+        encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads,
+                                                      d_feedforward=n_hid, dropout_p=dropout_p, activation='gelu')
+        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        self.transformer_encoder = CustomTransformerEncoder(encoder_layer=encoder_layer, n_layers=n_layers)
 
-        self.classifier = nn.Linear(in_features=(d_model + d_context), out_features=1)
+        self.classifier = nn.Linear(in_features=(d_model), out_features=1)
         self.sigmoid = nn.Sigmoid()
 
         self.context_embedding = ContextModel(d_model=d_model, d_context=d_context)
+
+    def load_word_embedding(self, trainable=True):
+        # create word embedding state dict
+        vectors = bcolz.open('data/irony_data/glove/6B.200.dat')
+        weights_matrix = np.zeros((100000, 200))
+        for i in range(100000):
+            weights_matrix[i] = vectors[i]
+            # TODO: optimize
+
+        print(weights_matrix)
+
+        word_embedding = nn.Embedding(num_embeddings=100000, embedding_dim=200)
+        word_embedding.load_state_dict({'weight': torch.from_numpy(weights_matrix)})
+        if not trainable:
+            word_embedding.weight.requires_grad = False
+
+        return word_embedding
 
     def generate_src_mask(self, utterance_lens: tuple) -> torch.Tensor:
         max_len = max(utterance_lens)
@@ -542,37 +587,52 @@ class IronyClassifier(nn.Module):
 
         return context_tensor
 
-    def forward(self, src: torch.Tensor, utterance_lens: tuple, context_tensor: torch.Tensor):
+    def generate_word_embedding(self) -> torch.Tensor:
+        pass
+
+    def forward(self, src: torch.Tensor, utterance_lens: tuple, first: bool, last_word_embedding: Optional[torch.Tensor] = None, last_utterance_lens: Optional[tuple] = None):
         # print('forward')
         # print('src_shape: ', src.shape)
         # get src mask
         src_mask = self.generate_src_mask(utterance_lens=utterance_lens)
         src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
-        word_embedding = src
         # print(src.shape)
         src = self.positional_encoder(src)
+        word_embedding = src
 
         # print(context_tensor.shape)
         # print(context_tensor.device)
         # context_tensor = self.context_fc_0(context_tensor.squeeze(0))
 
         # print(context_tensor.shape)
-        context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
+        if not first:
+            context_tensor = self.context_embedding(word_embedding=last_word_embedding, utterance_lengths=last_utterance_lens)
+        else:
+            context_tensor = self.generate_context().to(next(self.parameters()).device)
+        # context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
         # print(context_tensor.device)
         # print(src.shape[0])
 
-        # print('src_shape: ', src.shape)
-        # print('context_tensor_shape: ', context_tensor.shape)
-        src = torch.cat((src, context_tensor), dim=2)       # concat at feature number dimension
-        # print('src_shape: ', src.shape)
+        # print('(0) src_shape: ', src.shape)
+        # print('(0) context_tensor_shape: ', context_tensor.shape)
+        # src = torch.cat((src, context_tensor), dim=2)       # concat at feature number dimension
+        src = torch.cat((src, context_tensor.unsqueeze(0)), dim=0)  # concat at feature number dimension
+        # print('(1) src_shape: ', src.shape)
         torch.autograd.set_detect_anomaly = True
         # print('src_mask_shape: ', src_mask.shape)
         src_mask = None
 
-        out = self.transformer_encoder(src, src_mask)
-        out = self.sigmoid(self.classifier(out[0]))
+        out, attn_weights_list = self.transformer_encoder(src, src_mask)
+        # print(out.shape)
+        out = self.classifier(out[0])
+        out = self.sigmoid(out)
 
-        new_context_tensor = self.context_embedding(word_embedding=word_embedding, utterance_lengths=utterance_lens)
+        # new_context_tensor = self.context_embedding(word_embedding=word_embedding, utterance_lengths=utterance_lens)
         # print('new_context_tensor_shape: ', new_context_tensor.shape)
 
-        return out, new_context_tensor
+        # print('attn_weights_list[0].shape: ', attn_weights_list[0].shape)
+
+        # return out, new_context_tensor, attn_weights_list
+        # print(src)
+        # print(word_embedding)
+        return out, word_embedding, attn_weights_list

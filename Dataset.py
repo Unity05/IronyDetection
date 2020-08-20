@@ -230,7 +230,7 @@ class IronyClassificationDataset:
         # self.sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/sarcastic'))
 
         # TODO: self.vocabulary_dict = ...
-        with open(os.path.join(root, 'vocabulary.json'), 'r') as vocabulary_file:
+        with open(os.path.join(root, 'glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
             vocabulary_dict = json.load(vocabulary_file)
         self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
@@ -288,10 +288,12 @@ class IronyClassificationDataset:
             spectrogram = self.audio_transforms(waveform).squeeze(0).transpose(0, 1)"""
 
             utterance = row['comment']
+            # print(utterance + ' \n LOLOLOLOLOLOLO')
             utterance = torch.Tensor(self.text_to_indices(utterance=utterance.lower()))
             utterance_len = utterance.shape[0]
 
             parent_utterance = row['parent_comment']
+            # print(parent_utterance + ' \n LULULULULULU')
             parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance.lower()))
             parent_utterance_len = parent_utterance.shape[0]
 

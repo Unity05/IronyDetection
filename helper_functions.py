@@ -40,6 +40,33 @@ class CosineLearningRateScheduler:
         return lr
 
 
+class PlateauLearningRateScheduler:
+    def __init__(self, i_lr, n_batches_warmup, patience, factor):
+        self.lr = i_lr
+        self.n_batches_warmup = n_batches_warmup
+        self.current_batch = 0
+        self.last_loss = 42
+        self.max_patience = patience
+        self.current_patience = patience
+        self.factor = factor
+
+    def new_lr(self, loss):
+        if self.current_batch < self.n_batches_warmup:
+            # learning rate warmup
+            # starting with a too big learning rate may result in something unwanted (e.g. chaotic weights)
+            lr = self.current_batch * (self.lr / self.n_batches_warmup)
+        elif loss >= self.last_loss:
+            if (self.current_patience - 1) == 0:
+                lr = self.lr * self.factor
+                self.lr = lr
+                self.current_patience = self.max_patience
+            else:
+                lr = self.lr
+                self.current_patience -= 1
+
+        return lr
+
+
 def decoder(output, dataset, label_lens=None, blank_label=28, targets=None, train=False):
     print('Hi. :', output.shape)
     indices = torch.argmax(output, dim=2)
