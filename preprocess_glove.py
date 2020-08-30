@@ -2,6 +2,7 @@ import json
 import bcolz
 import numpy as np
 import random as rnd
+import torch
 
 
 vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/glove/6B.200.dat', mode='w')
@@ -48,3 +49,11 @@ with open('data/irony_data/glove_adjusted_vocabulary.json', 'w') as glove_adjust
     json.dump(word_dict, glove_adjusted_vocabulary_file)
 
 print('words_changed: ', words_changed)
+
+"""vectors = bcolz.open('data/irony_data/glove/6B.200.dat')
+weights_matrix = np.zeros((100000, 200))
+for i in range(100000):
+    weights_matrix[i] = vectors[i]
+
+torch.save(torch.from_numpy(weights_matrix), 'data/irony_data/glove/6B.200.dat.pth')"""
+

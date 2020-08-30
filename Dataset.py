@@ -220,11 +220,14 @@ class DatasetASRDecoder:
 
 
 class IronyClassificationDataset:
-    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data', phase=0):
         self.mode = mode
         self.root = root
 
-        self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}.csv'))
+        if mode == 'train':
+            self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}-{phase}.csv'))
+        else:
+            self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}.csv'))
 
         # self.non_sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/non_sarcastic'))
         # self.sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/sarcastic'))
@@ -234,7 +237,7 @@ class IronyClassificationDataset:
             vocabulary_dict = json.load(vocabulary_file)
         self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
-        self.vocabulary_dict['ukw'] = '10001'
+        self.vocabulary_dict['ukw'] = '100000'
 
         """if mode == 'train':
             self.start_index = 0
@@ -258,7 +261,7 @@ class IronyClassificationDataset:
             self.audio_transforms = torchaudio.transforms.MelSpectrogram()"""
 
     def text_to_indices(self, utterance):
-        indices = [10005]       # '<cls>' token
+        indices = [100001]       # '<cls>' token
         for word in utterance.split():
             # print(word)
             # TODO

@@ -3,11 +3,17 @@ import torch.nn as nn
 import json
 import gc
 
-from helper_functions import AverageMeter, CosineLearningRateScheduler
+from helper_functions import AverageMeter, CosineLearningRateScheduler, PlateauLearningRateScheduler
 from Dataset import IronyClassificationDataset
 from model import IronyClassifier
 
 import warnings
+
+
+# Manual seed value.
+"""seed_val = 42
+torch.manual_seed(seed_val)
+torch.cuda.manual_seed_all(seed_val)"""
 
 
 train_losses = []
@@ -26,7 +32,9 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training):
+def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
+    continue_training = False
+
     model.train()
     average_meter = AverageMeter()
     comment_average_meter = AverageMeter()
@@ -38,12 +46,12 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
         try:
             # data = train_dataloader[i]
             utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=10002).to(device)
-            parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False, padding_value=10002).to(device)
+            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(device)
+            parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False, padding_value=100002).to(device)
             target = torch.Tensor(target).to(device)
 
             utterances = [parent_utterance, utterance]
-            utterance_lens = [utterance_len, parent_utterance_len]
+            utterance_lens = [parent_utterance_len, utterance_len]
             targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
             # ==== forward ====
@@ -66,13 +74,18 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 losses.append(los.item())"""
 
             # parent_comment
+            # print(utterances[0].shape)
             output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
-            los = distance(output.squeeze(1), targets[0].to(device))
-            loss += los
-            losses.append(los.item())
+            # los = distance(output.squeeze(1), targets[0].to(device))
+            # loss += los
+            # losses.append(los.item())
 
             # comment
+            # print(word_embedding.shape)
             output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+            # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=word_embedding.shape[0])
+            # print(output)
+            # print(targets[1])
             los = distance(output.squeeze(1), targets[1].to(device))
             loss = los
             losses.append(los.item())
@@ -80,7 +93,7 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
             # ==== backward ====
             optim.zero_grad()
             loss.backward()
-            # nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
+            nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
             optim.step()
 
             # loss.detach_()
@@ -99,16 +112,37 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
             if loss.item() != 0:
                 # average_meter.step(loss=(loss.item()))
                 average_meter.step(loss=loss.item())
-                comment_average_meter.step(loss=losses[1])
-                parent_comment_average_meter.step(loss=losses[0])
+                comment_average_meter.step(loss=losses[0])
+                # parent_comment_average_meter.step(loss=losses[0])
 
             if i % 1000 == 0:
                 average_loss = average_meter.average()
                 comment_average_loss = comment_average_meter.average()
                 parent_comment_average_loss = parent_comment_average_meter.average()
                 train_losses.append(average_loss)
-                print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Parent_comment_loss: {parent_comment_average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 10}')
+                # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Parent_comment_loss: {parent_comment_average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
+                print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
+                if continue_training:
+                    lr = lr_scheduler.new_lr(loss=average_loss, n_batches=100)
+                    for param_group in optim.param_groups:
+                        param_group['lr'] = lr
+                    print('lr', lr)
                 n_exceptions = 0
+
+            if i % 10000 == 0:
+                valid(model=model, valid_dataloader=valid_dataloader, device=device,
+                      batch_size=28,
+                      distance=distance, epoch=epoch)
+                torch.save(model,
+                           f'models/irony_classification/models/irony_classification_model_{9}.{epoch}.pth')
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optim_state_dict': optim.state_dict(),
+                    'lr': lr
+                },
+                    f'models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_{9}.{epoch}.pth')
+
         except RuntimeError:
             # print('Except.')
             # print(torch.cuda.memory_reserved())
@@ -134,23 +168,28 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
     for i, data in enumerate(valid_dataloader):
         try:
             utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=10002).to(device)
+            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(
+                device)
             parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False,
-                                                         padding_value=10002).to(device)
+                                                         padding_value=100002).to(device)
             target = torch.Tensor(target).to(device)
 
             utterances = [parent_utterance, utterance]
-            utterance_lens = [utterance_len, parent_utterance_len]
+            utterance_lens = [parent_utterance_len, utterance_len]
             targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
             # ==== forward ====
-            context_tensor = model.generate_context().to(device)
             loss = 0
-            for i_2 in range(2):
-                output, context_tensor = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2],
-                                               context_tensor=context_tensor)
+            losses = []
 
-                loss += distance(output.squeeze(1), targets[i_2].to(device))
+            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+
+            # comment
+            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+            los = distance(output.squeeze(1), targets[1].to(device))
+            loss = los
+            losses.append(los.item())
 
             # ==== log ====
             if loss.item() != 0:
@@ -170,20 +209,20 @@ def main(version):
     CONTINUE_TRAINING = True
 
     hyper_params = {
-        'n_epochs': 10,
+        'n_epochs': 66,
 
         'vocabulary_size': 1.0e5,
-        'batch_size': 20,
+        'batch_size': 16,
 
         'd_model': 200,
         'd_context': 200,
-        'n_heads': 8,
-        'n_hids': 1024,
-        'n_layers': 8,
-        'dropout_p': 0.1,
+        'n_heads': 4,
+        'n_hids': 512,
+        'n_layers': 24,
+        'dropout_p': 0.75,
 
         'max_norm': 0.25,
-        'i_lr': 1.0e-4,
+        'i_lr': 5.0e-7,
         'n_batches_warmup': 2400
     }
 
@@ -192,7 +231,7 @@ def main(version):
 
     # define dataset loaders
 
-    train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=hyper_params['batch_size'],
@@ -200,6 +239,8 @@ def main(version):
         num_workers=0,
         collate_fn=collate_fn
     )
+    # train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=False)
+    # train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, sampler=train_sampler, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     valid_dataset = IronyClassificationDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     valid_dataloader = torch.utils.data.DataLoader(
@@ -226,8 +267,10 @@ def main(version):
     # set up optimizer, loss function and learning rate scheduler
 
     params = [p for p in model.parameters() if p.requires_grad]
-    optim = torch.optim.Adam(params=params, lr=hyper_params['i_lr'])
-    distance = nn.BCELoss()
+    optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5, amsgrad=False)
+    # optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
+    # distance = nn.BCELoss()
+    distance = nn.BCEWithLogitsLoss()
     lr_scheduler = CosineLearningRateScheduler(
         i_lr=hyper_params['i_lr'],
         n_batches_warmup=hyper_params['n_batches_warmup'],
@@ -236,21 +279,24 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_1.5.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_13.1.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
-            param_group['lr'] = 5.0e-10
+            param_group['lr'] = 5.0e-7
+        # lr_scheduler = PlateauLearningRateScheduler(i_lr=3.0e-8, n_batches_warmup=0, patience=3, factor=0.6)
         model.word_embedding.weight.requires_grad = True
 
 
     # train
 
-    for i_epoch in range(0, (0 + hyper_params['n_epochs'])):
+    for i_epoch in range(2, (2 + hyper_params['n_epochs'])):
         lr = train(model=model, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
                    distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
-                   lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING)
-        # valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
-          #     distance=distance, epoch=i_epoch)
+                   lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
+        valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
+              distance=distance, epoch=i_epoch)
+        """valid(model=model, valid_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
+              distance=distance, epoch=i_epoch)"""
 
         # save
 
@@ -271,4 +317,4 @@ def main(version):
 
 
 if __name__ == '__main__':
-    main(version=1)
+    main(version=13)

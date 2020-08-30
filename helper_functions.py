@@ -50,7 +50,7 @@ class PlateauLearningRateScheduler:
         self.current_patience = patience
         self.factor = factor
 
-    def new_lr(self, loss):
+    def new_lr(self, loss, n_batches):
         if self.current_batch < self.n_batches_warmup:
             # learning rate warmup
             # starting with a too big learning rate may result in something unwanted (e.g. chaotic weights)
@@ -63,6 +63,10 @@ class PlateauLearningRateScheduler:
             else:
                 lr = self.lr
                 self.current_patience -= 1
+        else:
+            lr = self.lr
+
+        self.current_batch += n_batches
 
         return lr
 

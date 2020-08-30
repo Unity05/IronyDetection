@@ -119,11 +119,11 @@ class CreateVocabulary:
         # print('Duration: ', time.process_time() - a)
         # print(x)
         self.vocab += x.split()
-        print('i: ', self.i)
+        # print('i: ', self.i)
         self.i += 1
 
 
-def generate_vocabulary(root='data'):
+def generate_vocabulary(root='data', max_len=0):
     if not os.path.isfile(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv')):
         lemmatizer = WordNetLemmatizer()
 
@@ -149,6 +149,8 @@ def generate_vocabulary(root='data'):
             df[relevant_column_name] = df[relevant_column_name].apply(lambda x: ' '.join([lemmatizer.lemmatize(
                 y[0], get_wordnet_pos(y[1])) for y in pos_tag(x.split())]))
 
+        print('Okay.')
+
         #df = df.loc[df['label'] == 0]        # just for audio recording
 
         df.to_csv(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv'), index=False, encoding='utf-8')
@@ -156,6 +158,16 @@ def generate_vocabulary(root='data'):
         df = pd.read_csv(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv'))
 
     print(df['comment'])
+    # print(df[~(df['comment'].str.len() > max_len)])
+    # print(df[df['comment'].apply(lambda x: print(type(len(str(x).split()))))])
+
+    # df = df[~(df['comment'].str.len() <= max_len)]
+    # df = df[~(df['parent_comment'].str.len() <= max_len)]
+    # print(df[df['comment'].apply(lambda x: print(type(len(str(x).split()) <= max_len)))])
+    df = df[df['comment'].apply(lambda x: len(str(x).split()) <= max_len)]
+    df = df[df['parent_comment'].apply(lambda x: len(str(x).split()) <= max_len)]
+    print('len_df: ', len(df))
+    df.to_csv('data/irony_data/train-balanced-sarcasm-adjusted-length.csv')
 
     # print(df.parent_comment.tolist())
 
@@ -167,10 +179,10 @@ def generate_vocabulary(root='data'):
     # df['frequencies_comments'] = df.comment.astype('U').apply(lambda x: FreqDist(samples=x.split()))
     vocabulary_creator = CreateVocabulary()
     df.comment.astype('U').apply(lambda x: vocabulary_creator.add(x=x))
-    print('First half finished.')
+    # print('First half finished.')
     # df['frequencies_parent_comments'] = df.parent_comment.astype('U').apply(lambda x: FreqDist(samples=x.split()))
     df.parent_comment.astype('U').apply(lambda x: vocabulary_creator.add(x=x))
-    print('Second half finished.')
+    # print('Second half finished.')
 
     vocab = vocabulary_creator.vocab
     vocab_words_frequencies = FreqDist(samples=vocab)
@@ -194,9 +206,9 @@ def generate_vocabulary(root='data'):
 
     # print(vectorizer.vocabulary_)
 
-    print(dict(vocab_words_frequencies))
+    # print(dict(vocab_words_frequencies))
     k = -1
-    print(f'{k} most frequent words: {list(vocab_words_frequencies)[:k]}')
+    # print(f'{k} most frequent words: {list(vocab_words_frequencies)[:k]}')
 
     vocabulary = {}
     for i, word in enumerate(list(vocab_words_frequencies)[:k]):
@@ -206,24 +218,43 @@ def generate_vocabulary(root='data'):
         json.dump(vocabulary, vocabulary_file)
 
 
-def split_data(root='data/irony_data', p_train=0.7, p_valid=0.10, p_test=0.20):
-    df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted.csv'))
+def split_data(root='data/irony_data', p_train=0.8, p_valid=0.1, p_test=0.1):
+    df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted-length.csv'))
     df_len = len(df)
     train_len = int(df_len * p_train)
     valid_len = int(df_len * p_valid)
     test_len = int(df_len * p_test)
 
-    df_train = df.loc[:train_len]
+    df_train_one = df.loc[df['label'] == 1].head(int(train_len / 2))
+    df_train_one_len_median = df_train_one['comment'].apply(lambda x: len(str(x).split())).median()
+    df_train_one_0 = df_train_one[df_train_one['comment'].apply(lambda x: len(str(x).split()) <= df_train_one_len_median)]
+    df_train_one_1 = df_train_one[df_train_one['comment'].apply(lambda x: len(str(x).split()) > df_train_one_len_median)]
+
+    df_train_zero = df.loc[df['label'] == 0].head(int(train_len / 2))
+    df_train_zero_len_median = df_train_zero['comment'].apply(lambda x: len(str(x).split())).median()
+    df_train_zero_0 = df_train_zero[df_train_zero['comment'].apply(lambda x: len(str(x).split()) <= df_train_zero_len_median)]
+    df_train_zero_1 = df_train_zero[df_train_zero['comment'].apply(lambda x: len(str(x).split()) > df_train_zero_len_median)]
+
+    # df_train = df.loc[:train_len]
+    df_train = pd.concat([df_train_one, df_train_zero], ignore_index=True)
+    df_train_0 = pd.concat([df_train_one_0, df_train_zero_0], ignore_index=True)
+    df_train_1 = pd.concat([df_train_one_1, df_train_zero_1], ignore_index=True)
+    print('len_df_train: ', len(df_train))
+    print('len_df_train_0: ', len(df_train_0), ' | len_df_train_one_0: ', len(df_train_one_0), ' | len_df_train_zero_0: ', len(df_train_zero_0))
+    print('len_df_train_1: ', len(df_train_1), ' | len_df_train_one_1: ', len(df_train_one_1), ' | len_df_train_zero_1: ', len(df_train_zero_1))
+
     df_valid = df.loc[train_len:(train_len + valid_len)]
     df_test = df.loc[(train_len + valid_len):(train_len + valid_len + test_len)]
     # print(len(df))
 
-    df_train.to_csv(os.path.join(root, 'train-balanced-sarcasm-train.csv'), index=False, encoding='utf-8')
+    df_train.to_csv(os.path.join(root, 'train-balanced-sarcasm-train-2.csv'), index=False, encoding='utf-8')
+    df_train_0.to_csv(os.path.join(root, 'train-balanced-sarcasm-train-0.csv'), index=False, encoding='utf-8')
+    df_train_1.to_csv(os.path.join(root, 'train-balanced-sarcasm-train-1.csv'), index=False, encoding='utf-8')
     df_valid.to_csv(os.path.join(root, 'train-balanced-sarcasm-valid.csv'), index=False, encoding='utf-8')
     df_test.to_csv(os.path.join(root, 'train-balanced-sarcasm-test.csv'), index=False, encoding='utf-8')
 
 
 # print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
-generate_vocabulary(root='data')
+# generate_vocabulary(root='data', max_len=64)
 # update_data(root='data')
 split_data()
