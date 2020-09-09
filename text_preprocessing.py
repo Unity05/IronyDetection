@@ -218,7 +218,7 @@ def generate_vocabulary(root='data', max_len=0):
         json.dump(vocabulary, vocabulary_file)
 
 
-def split_data(root='data/irony_data', p_train=0.8, p_valid=0.1, p_test=0.1):
+def split_data(root='data/irony_data', p_train=0.01, p_valid=0.1, p_test=0.1):
     df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-adjusted-length.csv'))
     df_len = len(df)
     train_len = int(df_len * p_train)
@@ -254,7 +254,84 @@ def split_data(root='data/irony_data', p_train=0.8, p_valid=0.1, p_test=0.1):
     df_test.to_csv(os.path.join(root, 'train-balanced-sarcasm-test.csv'), index=False, encoding='utf-8')
 
 
+def create_headlines_csv(root='data/irony_data/sarcastic_headlines'):
+    """with open(os.path.join(root, 'Sarcasm_Headlines_Dataset.json'), 'r') as file:
+        sarcasm_headlines_json_v1 = json.load(file)
+    with open(os.path.join(root, 'Sarcasm_Headlines_Dataset_v2.json'), 'r') as file:
+        sarcasm_headlines_json_v2 = json.load(file)"""
+    sarcasm_headlines_df_v1 = pd.read_json(os.path.join(root, 'Sarcasm_Headlines_Dataset.json'), lines=True)
+    sarcasm_headlines_df_v1 = sarcasm_headlines_df_v1.drop(['article_link'], axis=1)
+    sarcasm_headlines_df_v2 = pd.read_json(os.path.join(root, 'Sarcasm_Headlines_Dataset_v2.json'), lines=True)
+    sarcasm_headlines_df_v2 = sarcasm_headlines_df_v2.drop(['article_link'], axis=1)
+
+    print(sarcasm_headlines_df_v1)
+    print(sarcasm_headlines_df_v2)
+
+    sarcasm_headlines_df = pd.concat([sarcasm_headlines_df_v1, sarcasm_headlines_df_v2])
+
+    with open('data/irony_data/abbr_replacers', 'r') as file:
+        abbreviation_policy = json.load(file)
+
+    character_replacement_dict = {'.': '', '…': '', ',': '', '(': '', ')': '', '-': ' ', ';': '', ':': '',
+                                  '?': ' ?', '!': ' !', '=': '', '*': '', '~': ' ', '%': '', '"': '', '$': '',
+                                  '^': ' ', '#': '', '<': ' ', '>': ' ', '_': ' ', '{': ' ', '}': ' ', '/': ' ',
+                                  '\\': ' ', '|': ''}
+
+    lemmatizer = WordNetLemmatizer()
+
+    sarcasm_headlines_df['headline'] = sarcasm_headlines_df['headline'].str.lower().str.translate(
+        str.maketrans(character_replacement_dict)).str.replace(" '", "").replace("' ", "").str.split().apply(
+        lambda x: lemmatize_list(x=x, abbreviation_policy=abbreviation_policy))
+    sarcasm_headlines_df['headline'] = sarcasm_headlines_df['headline'].apply(lambda x: ' '.join([lemmatizer.lemmatize(
+        y[0], get_wordnet_pos(y[1])) for y in pos_tag(x.split())]))
+
+    sarcasm_headlines_df.to_csv(os.path.join(root, 'Sarcasm_Headlines_Dataset.csv'), index=False, encoding='utf-8')
+
+    r_train = 0.9
+    r_valid = 0.1
+
+    sarcasm_headlines_df_len = len(sarcasm_headlines_df)
+    train_len = int(r_train * sarcasm_headlines_df_len)
+    valid_len = int(r_valid * sarcasm_headlines_df_len)
+
+    sarcasm_headlines_df_one = sarcasm_headlines_df.loc[sarcasm_headlines_df['is_sarcastic'] == 1]
+    sarcasm_headlines_df_zero = sarcasm_headlines_df.loc[sarcasm_headlines_df['is_sarcastic'] == 0]
+    print(len(sarcasm_headlines_df_one))
+    print(len(sarcasm_headlines_df_zero))
+
+    df_train_one = sarcasm_headlines_df_one.head(int(train_len / 2))
+    sarcasm_headlines_df_one = sarcasm_headlines_df_one.iloc[int(train_len / 2):]
+    df_train_zero = sarcasm_headlines_df_zero.head(int(train_len / 2))
+    sarcasm_headlines_df_zero = sarcasm_headlines_df_zero.iloc[int(train_len / 2)]
+    df_train = pd.concat([df_train_one, df_train_zero])
+
+    df_valid = pd.concat([sarcasm_headlines_df_one, sarcasm_headlines_df_zero])
+
+    df_train.to_csv(os.path.join(root, 'Sarcasm_Headlines_Dataset_Train.csv'), index=False, encoding='utf-8')
+    df_valid.to_csv(os.path.join(root, 'Sarcasm_Headlines_Dataset_Valid.csv'), index=False, encoding='utf-8')
+
+
+def denoise_dataset(remove_indices_path):
+    with open(remove_indices_path, 'r') as remove_indices_file:
+        remove_indices = json.load(remove_indices_file)
+    remove_indices = remove_indices['remove_samples_indices']
+
+    train_df = pd.read_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv')
+
+    # print(train_df)
+
+    adjusted_train_df = train_df.drop(remove_indices)
+
+    # print(adjusted_train_df)
+
+    # print(remove_indices)
+
+    adjusted_train_df.to_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv', index=False, encoding='utf-8')
+
+
 # print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
 # generate_vocabulary(root='data', max_len=64)
 # update_data(root='data')
-split_data()
+# split_data()
+# create_headlines_csv(root='data/irony_data/sarcastic_headlines')
+denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_1.json')

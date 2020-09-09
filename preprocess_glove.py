@@ -5,7 +5,7 @@ import random as rnd
 import torch
 
 
-vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/glove/6B.200.dat', mode='w')
+vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/glove/6B.300.dat', mode='w')
 
 
 with open('data/irony_data/vocabulary.json', 'r') as word_dict_file:
@@ -16,7 +16,7 @@ top_k = 100000
 words_changed = 0
 print(word_list)
 
-with open('data/irony_data/glove/glove.6B.200d.txt', 'rb') as glove_file:
+with open('data/irony_data/glove/glove.6B.300d.txt', 'rb') as glove_file:
     glove_word_dict = {line.decode().split()[0]: np.array(line.decode().split()[1:]) for line in glove_file}
     glove_word_dict_list = list(glove_word_dict)
     print(glove_word_dict_list)
@@ -42,10 +42,10 @@ with open('data/irony_data/glove/glove.6B.200d.txt', 'rb') as glove_file:
         if i == top_k:
             break
 
-vectors = bcolz.carray(vectors[1:].reshape((top_k, 200)), rootdir='data/irony_data/glove/6B.200.dat', mode='w')
+vectors = bcolz.carray(vectors[1:].reshape((top_k, 300)), rootdir='data/irony_data/glove/6B.300.dat', mode='w')
 vectors.flush()
 
-with open('data/irony_data/glove_adjusted_vocabulary.json', 'w') as glove_adjusted_vocabulary_file:
+with open('data/irony_data/glove/glove_adjusted_vocabulary.json', 'w') as glove_adjusted_vocabulary_file:
     json.dump(word_dict, glove_adjusted_vocabulary_file)
 
 print('words_changed: ', words_changed)

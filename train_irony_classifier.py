@@ -4,16 +4,16 @@ import json
 import gc
 
 from helper_functions import AverageMeter, CosineLearningRateScheduler, PlateauLearningRateScheduler
-from Dataset import IronyClassificationDataset
+from Dataset import IronyClassificationDataset, SARC_2_0_IronyClassificationDataset, SarcasmHeadlinesDataset
 from model import IronyClassifier
 
 import warnings
 
 
 # Manual seed value.
-"""seed_val = 42
+seed_val = 42
 torch.manual_seed(seed_val)
-torch.cuda.manual_seed_all(seed_val)"""
+torch.cuda.manual_seed_all(seed_val)
 
 
 train_losses = []
@@ -23,7 +23,7 @@ valid_losses = []
 def load_checkpoint(checkpoint_path, model, optim):
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optim.load_state_dict(checkpoint['optim_state_dict'])
+    # optim.load_state_dict(checkpoint['optim_state_dict'])     # TODO: Commented out, because I switched from Adam to SGD after epoch 3 in model number 15.
 
     return model, optim
 
@@ -32,69 +32,112 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
+remove_samples_indices = []
+
+
 def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
     continue_training = False
 
     model.train()
+    # model.eval()
     average_meter = AverageMeter()
     comment_average_meter = AverageMeter()
     parent_comment_average_meter = AverageMeter()
     n_exceptions = 0
 
+    all_train_losses = []
+    zero_train_losses = []
+    one_train_losses = []
+
     for i, data in enumerate(train_dataloader):
+        """if i > 10000:
+            break"""
     # for i in range(len(train_dataloader)):
+        losses = []
+        # print('Lol.')
+
         try:
             # data = train_dataloader[i]
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(device)
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+
+            chain_training = (utterance[0] != None)
+
             parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False, padding_value=100002).to(device)
             target = torch.Tensor(target).to(device)
 
-            utterances = [parent_utterance, utterance]
-            utterance_lens = [parent_utterance_len, utterance_len]
-            targets = [torch.zeros((batch_size), dtype=torch.float32), target]
-
             # ==== forward ====
-            # context_tensor = model.generate_context().to(device)
-            loss = 0
-            losses = []
-            """for i_2 in range(2):
-                output, context_tensor, _ = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2], last_word_embedding=context_tensor)
+            if not chain_training:
+                # print('Hi.')
+                # context_tensor = model.generate_context().to(device)
 
-                # print('output_shape: ', output.shape)
-                # print('target_shape: ', targets[i_2].shape)
-                # print('output: ', output.squeeze(1))
-                # print('target: ', targets[i_2])
-                # print('output_index: ', torch.argmax(output, dim=1).float())
-                # print('output_type: ', output.dtype)
-                # print('target_type: ', target.dtype)
-                # loss = distance(torch.argmax(output, dim=1).float(), target)
-                los = distance(output.squeeze(1), targets[i_2].to(device))
-                loss += los
-                losses.append(los.item())"""
+                output, word_embedding = model(parent_utterance, utterance_lens=parent_utterance_len, first=True, chain_training=chain_training)
 
-            # parent_comment
-            # print(utterances[0].shape)
-            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
-            # los = distance(output.squeeze(1), targets[0].to(device))
-            # loss += los
-            # losses.append(los.item())
+                loss = distance(output.squeeze(1), target.to(device))
+                losses.append(loss.item())
+            else:
+                utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(device)
+                utterances = [parent_utterance, utterance]
+                utterance_lens = [parent_utterance_len, utterance_len]
+                targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
-            # comment
-            # print(word_embedding.shape)
-            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-            # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=word_embedding.shape[0])
-            # print(output)
-            # print(targets[1])
-            los = distance(output.squeeze(1), targets[1].to(device))
-            loss = los
-            losses.append(los.item())
+                loss = 0
+                """for i_2 in range(2):
+                    output, context_tensor, _ = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2], last_word_embedding=context_tensor)
+    
+                    # print('output_shape: ', output.shape)
+                    # print('target_shape: ', targets[i_2].shape)
+                    # print('output: ', output.squeeze(1))
+                    # print('target: ', targets[i_2])
+                    # print('output_index: ', torch.argmax(output, dim=1).float())
+                    # print('output_type: ', output.dtype)
+                    # print('target_type: ', target.dtype)
+                    # loss = distance(torch.argmax(output, dim=1).float(), target)
+                    los = distance(output.squeeze(1), targets[i_2].to(device))
+                    loss += los
+                    losses.append(los.item())"""
+
+                # parent_comment
+                # print(utterances[0].shape)
+                # output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+                output, word_embedding = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+                # los = distance(output.squeeze(1), targets[0].to(device))
+                # loss += los
+                # losses.append(los.item())
+
+                # comment
+                # print(word_embedding.shape)
+                # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+                output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+                # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=word_embedding.shape[0])
+                # print(output)
+                # print(targets[1])
+                los = distance(output.squeeze(1), targets[1].to(device))
+                loss = los
+                losses.append(los.item())
+
+                train_losses.append(los.item())
+
+            """all_train_losses.append(loss.item())
+
+            # print(target)
+            # print(target.item())
+
+            if target.item() == 0.0:
+                zero_train_losses.append(loss.item())
+            else:
+                one_train_losses.append(loss.item())"""
 
             # ==== backward ====
-            optim.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
-            optim.step()
+            if loss.item() < 1.0 or not chain_training:
+            # if True:
+                optim.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
+                optim.step()
+
+            """if loss.item() > 0.5:
+                remove_samples_indices.append(i)"""
+            # print(remove_samples_indices)
 
             # loss.detach_()
 
@@ -120,8 +163,11 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 comment_average_loss = comment_average_meter.average()
                 parent_comment_average_loss = parent_comment_average_meter.average()
                 train_losses.append(average_loss)
+                # train_losses += [average_loss]
+                class_ratio = 0.5
                 # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Parent_comment_loss: {parent_comment_average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
-                print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
+                print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
+                # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Target: {targets[1]} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
                 if continue_training:
                     lr = lr_scheduler.new_lr(loss=average_loss, n_batches=100)
                     for param_group in optim.param_groups:
@@ -129,7 +175,7 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                     print('lr', lr)
                 n_exceptions = 0
 
-            if i % 10000 == 0:
+            """if i % 10000 == 0 and i != 0:
                 valid(model=model, valid_dataloader=valid_dataloader, device=device,
                       batch_size=28,
                       distance=distance, epoch=epoch)
@@ -141,7 +187,7 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                     'optim_state_dict': optim.state_dict(),
                     'lr': lr
                 },
-                    f'models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_{9}.{epoch}.pth')
+                    f'models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_{9}.{epoch}.pth')"""
 
         except RuntimeError:
             # print('Except.')
@@ -158,6 +204,19 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
         # print(torch.cuda.memory_reserved())
         # print(torch.cuda.memory_allocated())
 
+    """train_loss_distribution = {
+        'all_train_losses': all_train_losses,
+        'zero_train_losses': zero_train_losses,
+        'one_train_losses': one_train_losses
+    }
+    with open('models/irony_classification/train_loss_distribution_with_second_dataset.json', 'w') as train_loss_distribution_file:
+        json.dump(train_loss_distribution, train_loss_distribution_file)"""
+    """remove_samples_indices_dict = {
+        'remove_samples_indices': remove_samples_indices
+    }
+    with open('models/irony_classification/remove_samples_indices_dict_1.json', 'w') as remove_samples_indices_dict_file:
+        json.dump(remove_samples_indices_dict, remove_samples_indices_dict_file)"""
+
     return lr
 
 
@@ -167,29 +226,43 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
     for i, data in enumerate(valid_dataloader):
         try:
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data
-            utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(
-                device)
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target, = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+
+            chain_training = (utterance[0] != None)
+
             parent_utterance = nn.utils.rnn.pad_sequence(sequences=parent_utterance, batch_first=False,
                                                          padding_value=100002).to(device)
             target = torch.Tensor(target).to(device)
-
-            utterances = [parent_utterance, utterance]
-            utterance_lens = [parent_utterance_len, utterance_len]
-            targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
             # ==== forward ====
             loss = 0
             losses = []
 
-            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+            if not chain_training:
+                # print('Hi.')
+                output, word_embedding = model(parent_utterance, utterance_lens=parent_utterance_len, first=True,
+                                               chain_training=chain_training)
 
-            # comment
-            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
-                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-            los = distance(output.squeeze(1), targets[1].to(device))
-            loss = los
-            losses.append(los.item())
+                loss = distance(output.squeeze(1), target.to(device))
+                # print(loss)
+                losses.append(loss.item())
+            else:
+                utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(device)
+                utterances = [parent_utterance, utterance]
+                utterance_lens = [parent_utterance_len, utterance_len]
+                targets = [torch.zeros((batch_size), dtype=torch.float32), target]
+
+                # output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+                output, word_embedding = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+
+                # comment
+                # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                  #                                 last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+                output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                                               last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+                los = distance(output.squeeze(1), targets[1].to(device))
+                loss = los
+                losses.append(los.item())
 
             # ==== log ====
             if loss.item() != 0:
@@ -209,20 +282,20 @@ def main(version):
     CONTINUE_TRAINING = True
 
     hyper_params = {
-        'n_epochs': 66,
+        'n_epochs': 10,
 
         'vocabulary_size': 1.0e5,
-        'batch_size': 16,
+        'batch_size': 10,
 
-        'd_model': 200,
-        'd_context': 200,
+        'd_model': 300,
+        'd_context': 300,
         'n_heads': 4,
         'n_hids': 512,
-        'n_layers': 24,
-        'dropout_p': 0.75,
+        'n_layers': 8,
+        'dropout_p': 0.25,
 
-        'max_norm': 0.25,
-        'i_lr': 5.0e-7,
+        'max_norm': 0.1,
+        'i_lr': 5.0e-5,
         'n_batches_warmup': 2400
     }
 
@@ -232,6 +305,8 @@ def main(version):
     # define dataset loaders
 
     train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
+    # train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    # train_dataset = SarcasmHeadlinesDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=hyper_params['batch_size'],
@@ -243,6 +318,8 @@ def main(version):
     # train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, sampler=train_sampler, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0, collate_fn=collate_fn)
 
     valid_dataset = IronyClassificationDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    # valid_dataset = SARC_2_0_IronyClassificationDataset(mode='test', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    # valid_dataset = SarcasmHeadlinesDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     valid_dataloader = torch.utils.data.DataLoader(
         dataset=valid_dataset,
         batch_size=hyper_params['batch_size'],
@@ -250,6 +327,11 @@ def main(version):
         num_workers=0,
         collate_fn=collate_fn
     )
+    """valid_dataloader = torch.utils.data.DataLoader(dataset=valid_dataset,
+                                                   batch_size=10,
+                                                   shuffle=False,
+                                                   num_workers=0,
+                                                   collate_fn=collate_fn)"""
 
     # get models
 
@@ -279,10 +361,10 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_13.1.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_22.1.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
-            param_group['lr'] = 5.0e-7
+            param_group['lr'] = 5.0e-5
         # lr_scheduler = PlateauLearningRateScheduler(i_lr=3.0e-8, n_batches_warmup=0, patience=3, factor=0.6)
         model.word_embedding.weight.requires_grad = True
 
@@ -312,9 +394,9 @@ def main(version):
             'train_losses': train_losses,
             'valid_losses': valid_losses
         }
-        # with open(f'models/irony_classification/plot_data/plot_data_irony_classification_model_{version}.{i_epoch}.pth') as plot_info_file:
-          #   json.dump(plot_info_data, plot_info_file)
+        with open(f'models/irony_classification/plot_data/plot_data_irony_classification_model_{version}.{i_epoch}.pth', 'w') as plot_info_file:
+            json.dump(plot_info_data, plot_info_file)
 
 
 if __name__ == '__main__':
-    main(version=13)
+    main(version=22)

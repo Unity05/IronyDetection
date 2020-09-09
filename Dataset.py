@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+import nlpaug.augmenter.word as naw
 
 import json
 import os
@@ -225,9 +226,14 @@ class IronyClassificationDataset:
         self.root = root
 
         if mode == 'train':
-            self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}-{phase}.csv'))
+            self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}-{phase}-adjusted.csv'))
+            # self.df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-train-very-small.csv'))
         else:
             self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}.csv'))
+
+        """print(mode)
+        print('a: ', len(self.df.loc[self.df['label'] == 1]))
+        print('b: ', len(self.df.loc[self.df['label'] == 0]))"""
 
         # self.non_sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/non_sarcastic'))
         # self.sarcastic_audio_files = os.listdir(os.path.join(root, 'Audio/sarcastic'))
@@ -238,6 +244,8 @@ class IronyClassificationDataset:
         self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
         self.vocabulary_dict['ukw'] = '100000'
+
+        self.aug = naw.SynonymAug()
 
         """if mode == 'train':
             self.start_index = 0
@@ -262,6 +270,7 @@ class IronyClassificationDataset:
 
     def text_to_indices(self, utterance):
         indices = [100001]       # '<cls>' token
+        # print(len(utterance.split()))
         for word in utterance.split():
             # print(word)
             # TODO
@@ -292,12 +301,19 @@ class IronyClassificationDataset:
 
             utterance = row['comment']
             # print(utterance + ' \n LOLOLOLOLOLOLO')
-            utterance = torch.Tensor(self.text_to_indices(utterance=utterance.lower()))
+            utterance = utterance.lower()
+            """if rnd.random() < 0.95 and self.mode == 'train':
+            # if self.mode == 'train':
+                utterance = self.aug.augment(data=utterance)        # text augmentation (SynonymAug)"""
+            utterance = torch.Tensor(self.text_to_indices(utterance=utterance))
             utterance_len = utterance.shape[0]
 
             parent_utterance = row['parent_comment']
             # print(parent_utterance + ' \n LULULULULULU')
-            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance.lower()))
+            parent_utterance = parent_utterance.lower()
+            """if rnd.random() < 0.75 and self.mode == 'train':
+                parent_utterance = self.aug.augment(data=parent_utterance)"""
+            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance))
             parent_utterance_len = parent_utterance.shape[0]
 
             # target = row['target']
@@ -318,7 +334,156 @@ class IronyClassificationDataset:
         return len(self.df)
 
 
+class SARC_2_0_IronyClassificationDataset:
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+        self.mode = mode
+        self.root = root
+
+        # ==== Load Training Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
+            self.comments_json = json.load(comments_json_file)
+
+        if mode == 'train':
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-balanced.csv'), names=['data'], encoding='utf-8')
+        else:
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced.csv'), names=['data'], encoding='utf-8')
+
+        # ==== Load Vocabulary Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
+            vocabulary_dict = json.load(vocabulary_file)
+        self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
+        self.vocabulary_dict['ukw'] = '100000'
+
+        self.n_current_samples = 0.1
+        self.n_sarcastic = 0
+
+    def text_to_indices(self, utterance):
+        indices = [100001]       # '<cls>' token
+        for word in utterance.split():
+            # print(word)
+            # TODO
+            try:
+                indices.append(int(self.vocabulary_dict[word]))
+            except KeyError:
+                indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
+
+        return indices
+
+    def __getitem__(self, index):
+        data = self.df.iloc[index].item()
+        data = data.split('|')
+
+        post_ids = data[0].split(' ')
+        response_ids = data[1].split(' ')
+        labels = data[2].split(' ')
+
+        # Shuffle lists, so that 'index()' does not always choose the same element / comment id.
+        combined_ids = list(zip(post_ids, response_ids, labels))
+        rnd.shuffle(combined_ids)
+        post_ids, response_ids, labels = zip(*combined_ids)
+
+        class_ratio = (self.n_sarcastic / self.n_current_samples)
+        try:
+            if class_ratio <= 0.5:
+                response_index = labels.index('1')
+            elif class_ratio > 0.5:
+                response_index = labels.index('0')
+        except ValueError:
+            response_index = rnd.randint(0, (len(response_ids) - 1))
+
+        post_id = post_ids[0]       # TODO: Is this always the best choice?
+        response_id = response_ids[response_index]
+        label = int(labels[response_index])
+
+        """print(self.comments_json[post_id])
+        print(self.comments_json[response_id])
+        print(label)"""
+
+        parent_utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[post_id][0].lower()))
+        parent_utterance_len = parent_utterance.shape[0]
+
+        utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[response_id][0].lower()))
+        utterance_len = utterance.shape[0]
+
+        # class equilibrium
+        self.n_current_samples += 1
+        self.n_sarcastic += label
+
+        return utterance, utterance_len, parent_utterance, parent_utterance_len, label, class_ratio
+
+    def __len__(self):
+        # return len(self.comments_json)
+        return len(self.df)
+
+
+class SarcasmHeadlinesDataset:
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+        self.mode = mode
+        self.root = root
+
+        # ==== Load Training Data ====
+
+        if mode == 'train':
+            self.sarcasm_headlines_df = pd.read_csv(os.path.join(root, 'sarcastic_headlines/Sarcasm_Headlines_Dataset_Train.csv'))
+        else:
+            self.sarcasm_headlines_df = pd.read_csv(os.path.join(root, 'sarcastic_headlines/Sarcasm_Headlines_Dataset_Valid.csv'))
+
+        with open(os.path.join(root, 'glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
+            vocabulary_dict = json.load(vocabulary_file)
+        self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
+        self.vocabulary_dict['ukw'] = '100000'
+
+    def text_to_indices(self, utterance):
+        indices = [100001]       # '<cls>' token
+        for word in utterance.split():
+            # print(word)
+            # TODO
+            try:
+                indices.append(int(self.vocabulary_dict[word]))
+            except KeyError:
+                indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
+
+        return indices
+
+    def __getitem__(self, index):
+        try:
+            row = self.sarcasm_headlines_df.loc[index]
+
+            parent_utterance = row['headline']
+            # print(parent_utterance)
+            parent_utterance = parent_utterance.lower()
+            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance))
+            parent_utterance_len = parent_utterance.shape[0]
+
+            target = row['is_sarcastic']
+
+            utterance = None
+            utterance_len = None
+        except AttributeError:
+            return self.__getitem__((index - 1))    # if utterance or parent utterance is 'nan'
+
+        return utterance, utterance_len, parent_utterance, parent_utterance_len, target
+
+    def __len__(self):
+        return len(self.sarcasm_headlines_df)
+
 #x = DatasetASRDecoder(root='data', url='train-clean-100')
 #x.__getitem__(0)
 #print(x.dataset.__len__())
 #print(x.dataset.__getitem__(0))
+
+"""# string = 'Hi, my name is fish and I do not like cars.'
+
+string = 'i can not wait until @potus start a twitter war against morning joe'
+
+# aug = nlpaug.augmenter.word.synonym.SynonymAug()
+
+aug = naw.SynonymAug()
+
+augmented_data = aug.augment(data=string)
+
+print(augmented_data)"""

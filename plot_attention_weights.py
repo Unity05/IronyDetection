@@ -5,6 +5,7 @@ from matplotlib import colors
 import matplotlib.pyplot as plt
 
 from Dataset import IronyClassificationDataset
+from model import IronyClassifier
 
 """x = torch.Tensor([
     [0.0, 0.1, 0.2],
@@ -35,7 +36,7 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     x = attn_weights_list[0].shape[-1]
     n_layers = len(attn_weights_list)
     # print(n_layers)
-    n_heads = 8     # change later TODO
+    n_heads = 4     # change later TODO
 
     fig, axes = plt.subplots(n_layers, n_heads)
     # print(axes)
@@ -52,9 +53,15 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
             # print(i)
             # print(axes[i, j])
             # print('shape_test: ', attn_weights_list[((i))][batch_i][j].shape)
-            imgs.append(axes[i, j].imshow(attn_weights_list[((i))][batch_i][j], cmap=cmap))
+            imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1], axis=0), cmap=cmap))
             # axes[i, j].label_outer()
             axes[i, j].label_outer()
+
+            plt.xticks(
+                ticks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+                labels=['context', 'class', 'because', 'throw', 'money', 'at', 'the', 'problem', 'have', 'always', 'work', 'in', 'the', 'past'],
+                rotation='vertical'
+            )
 
     norm = colors.Normalize(vmin=0.0, vmax=1.0)
 
@@ -70,7 +77,19 @@ def collate_fn(batch):
 def test(model_path, distance, root='data/irony_data', batch_size=1):
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device('cpu')
-    model = torch.load(model_path, map_location='cpu')
+    # model = torch.load(model_path, map_location='cpu')
+    model = IronyClassifier(
+        batch_size=batch_size,
+        n_tokens=1.0e5,
+        d_model=300,
+        d_context=300,
+        n_heads=4,
+        n_hid=512,
+        n_layers=8,
+        dropout_p=0.5
+    )
+    model.load_state_dict(state_dict=torch.load(model_path)['model_state_dict'])
+    model.to(device)
     test_dataset = IronyClassificationDataset(mode='test', top_k=1.0e5, root=root)
     test_dataloader = torch.utils.data.DataLoader(
         dataset=test_dataset,
@@ -92,11 +111,11 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
             target = torch.Tensor(target).to(device)
 
             utterances = [parent_utterance, utterance]
-            utterance_lens = [utterance_len, parent_utterance_len]
+            utterance_lens = [parent_utterance_len, utterance_len]
             targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
             # ==== forward ====
-            context_tensor = model.generate_context().to(device)
+            """context_tensor = model.generate_context().to(device)
             loss = 0
             for i_2 in range(2):
                 output, context_tensor, _ = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2],
@@ -108,9 +127,19 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
                 print('Loss: ', distance(output.squeeze(1), targets[i_2].to(device)))
 
                 # print(_[0].shape)
-                # print(_)
+                # print(_)"""
 
-                plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
+            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+
+            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+            los = distance(output.squeeze(1), targets[1].to(device))
+
+            print(los)
+
+            print(targets[1])
+
+            plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
 
 x = [
     torch.Tensor([
@@ -126,5 +155,7 @@ x = [
 ]
 
 # plot_attn(attn_weights_list=x, batch_i=0)
-test(model_path='models/irony_classification/models/irony_classification_model_0.9.pth',
-     distance=nn.BCELoss(), root='data/irony_data', batch_size=1)
+"""test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
+     distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
+test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_22.1.pth',
+     distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)

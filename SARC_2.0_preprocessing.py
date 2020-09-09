@@ -38,7 +38,7 @@ def get_wordnet_pos(treebank_tag):
 
 
 def generate_vocabulary(root='data'):
-    if not os.path.isfile(os.path.join(root, 'irony_data/new-train-balanced-sarcasm-adjusted.csv')):
+    if not os.path.isfile(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json')):
         lemmatizer = WordNetLemmatizer()
 
         # df = pd.read_csv(os.path.join(root, 'irony_data/SARC_2.0/train-balanced.csv', names=['data'], encoding='utf-8'))
@@ -54,6 +54,7 @@ def generate_vocabulary(root='data'):
                                       '^': ' ', '#': '', '<': ' ', '>': ' ', '_': ' ', '{': ' ', '}': ' ', '/': ' ',
                                       '\\': ' ', '|': ''}
 
+        print(len(comments_json))
         for i, comment_json_key in enumerate(comments_json.keys()):
             adjusted_comment_text_list = [abbreviation_policy.get(e, e) for e in
                                           comments_json[comment_json_key]['text'].lower().translate(
@@ -68,12 +69,16 @@ def generate_vocabulary(root='data'):
         with open(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json'), 'w') as adjusted_comments_json_file:
             json.dump(comments_json, adjusted_comments_json_file)
     else:
-        with open(os.path.join(root, 'irony_data/SARC_2.0/comments.json'), 'r') as comments_json_file:
+        with open(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
             comments_json = json.load(comments_json_file)
 
     vocabulary_creator = CreateVocabulary()
     for i, comment_json_key in enumerate(comments_json.keys()):
-        vocabulary_creator.add(x=comments_json[comment_json_key].split())
+        # print(comments_json[comment_json_key][0].split())
+        vocabulary_creator.add(x=comments_json[comment_json_key][0])
+
+        if i % 100000 == 0:
+            print((i / len(comments_json)) * 100)
 
     vocab = vocabulary_creator.vocab
     vocab_words_frequencies = FreqDist(samples=vocab)
