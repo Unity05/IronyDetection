@@ -38,8 +38,8 @@ remove_samples_indices = []
 def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
     continue_training = False
 
-    model.train()
-    # model.eval()
+    # model.train()
+    model.eval()
     average_meter = AverageMeter()
     comment_average_meter = AverageMeter()
     parent_comment_average_meter = AverageMeter()
@@ -128,14 +128,15 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 one_train_losses.append(loss.item())"""
 
             # ==== backward ====
-            if loss.item() < 1.0 or not chain_training:
+            if loss.item() < 0.9 or not chain_training:
             # if True:
+                # print(loss.item())
                 optim.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_norm)
                 optim.step()
 
-            """if loss.item() > 0.5:
+            """if loss.item() > 0.75:
                 remove_samples_indices.append(i)"""
             # print(remove_samples_indices)
 
@@ -211,11 +212,11 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
     }
     with open('models/irony_classification/train_loss_distribution_with_second_dataset.json', 'w') as train_loss_distribution_file:
         json.dump(train_loss_distribution, train_loss_distribution_file)"""
-    """remove_samples_indices_dict = {
+    remove_samples_indices_dict = {
         'remove_samples_indices': remove_samples_indices
     }
-    with open('models/irony_classification/remove_samples_indices_dict_1.json', 'w') as remove_samples_indices_dict_file:
-        json.dump(remove_samples_indices_dict, remove_samples_indices_dict_file)"""
+    with open('models/irony_classification/remove_samples_indices_dict_2.json', 'w') as remove_samples_indices_dict_file:
+        json.dump(remove_samples_indices_dict, remove_samples_indices_dict_file)
 
     return lr
 
@@ -285,17 +286,17 @@ def main(version):
         'n_epochs': 10,
 
         'vocabulary_size': 1.0e5,
-        'batch_size': 10,
+        'batch_size': 30,
 
         'd_model': 300,
         'd_context': 300,
         'n_heads': 4,
         'n_hids': 512,
-        'n_layers': 8,
+        'n_layers': 10,
         'dropout_p': 0.25,
 
-        'max_norm': 0.1,
-        'i_lr': 5.0e-5,
+        'max_norm': 0.25,
+        'i_lr': 1.0e-7,
         'n_batches_warmup': 2400
     }
 
@@ -361,22 +362,22 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_22.1.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_21.5.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
-            param_group['lr'] = 5.0e-5
+            param_group['lr'] = 1.0e-7
         # lr_scheduler = PlateauLearningRateScheduler(i_lr=3.0e-8, n_batches_warmup=0, patience=3, factor=0.6)
         model.word_embedding.weight.requires_grad = True
 
 
     # train
 
-    for i_epoch in range(2, (2 + hyper_params['n_epochs'])):
+    for i_epoch in range(6, (6 + hyper_params['n_epochs'])):
         lr = train(model=model, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
                    distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
                    lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
-        valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
-              distance=distance, epoch=i_epoch)
+        """valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
+              distance=distance, epoch=i_epoch)"""
         """valid(model=model, valid_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
               distance=distance, epoch=i_epoch)"""
 
@@ -399,4 +400,4 @@ def main(version):
 
 
 if __name__ == '__main__':
-    main(version=22)
+    main(version=23)

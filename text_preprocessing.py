@@ -334,4 +334,4 @@ def denoise_dataset(remove_indices_path):
 # update_data(root='data')
 # split_data()
 # create_headlines_csv(root='data/irony_data/sarcastic_headlines')
-denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_1.json')
+denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_2.json')
