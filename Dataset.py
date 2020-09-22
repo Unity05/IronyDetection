@@ -227,6 +227,7 @@ class IronyClassificationDataset:
 
         if mode == 'train':
             self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}-{phase}-adjusted.csv'))
+            # self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}-{phase}.csv'))
             # self.df = pd.read_csv(os.path.join(root, 'train-balanced-sarcasm-train-very-small.csv'))
         else:
             self.df = pd.read_csv(os.path.join(root, f'train-balanced-sarcasm-{mode}.csv'))
@@ -277,6 +278,7 @@ class IronyClassificationDataset:
             try:
                 indices.append(int(self.vocabulary_dict[word]))
             except KeyError:
+                # print('ukw: ', word)
                 indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
 
         return indices
@@ -351,39 +353,76 @@ class SARC_2_0_IronyClassificationDataset:
 
         # ==== Load Vocabulary Data ====
 
-        with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
+        # with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary_original_adjusted.json'), 'r') as vocabulary_file:
+        with open(os.path.join(root, 'SARC_2.0/vocabulary_fast_text_adjusted.json'), 'r') as vocabulary_file:
             vocabulary_dict = json.load(vocabulary_file)
         self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
         self.vocabulary_dict['ukw'] = '100000'
+        self.vocabulary_dict['sep'] = '100003'
 
         self.n_current_samples = 0.1
         self.n_sarcastic = 0
 
-    def text_to_indices(self, utterance):
+    def text_to_indices(self, utterance, first):
+        # print(utterance)
         indices = [100001]       # '<cls>' token
+        if not first:
+            indices.append(100003)
+        num_unknown_words = 1.0e-9
         for word in utterance.split():
             # print(word)
             # TODO
             try:
                 indices.append(int(self.vocabulary_dict[word]))
             except KeyError:
+                num_unknown_words += 1
+                # print('Hi.')
+                # print(word)
                 indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
+        if not first:
+            indices.append(100003)
 
-        return indices
+        try:
+            unkown_words_frequency = (num_unknown_words / len(utterance.split()))
+        except ZeroDivisionError:
+            unkown_words_frequency = 1.0
+
+        return indices, unkown_words_frequency
 
     def __getitem__(self, index):
         data = self.df.iloc[index].item()
         data = data.split('|')
 
         post_ids = data[0].split(' ')
+        # post_id = post_ids[0]       # TODO: Is this always the best choice?
+        post_id = post_ids[-1]
+
         response_ids = data[1].split(' ')
         labels = data[2].split(' ')
 
+        """for p_id in post_ids:
+            print(self.comments_json[p_id])
+        print('-' * 24)
+        for r_id in response_ids:
+            print(self.comments_json[r_id])
+        print('-' * 24)
+        print(labels)
+        # for r_id in response_ids"""
+
         # Shuffle lists, so that 'index()' does not always choose the same element / comment id.
-        combined_ids = list(zip(post_ids, response_ids, labels))
+        # print(post_ids)
+        # print(response_ids)
+        # print(labels)
+        combined_ids = list(zip((post_ids * len(labels)), response_ids, labels))
+        # print(combined_ids)
         rnd.shuffle(combined_ids)
+        # print(combined_ids)
+        # print(*combined_ids)
         post_ids, response_ids, labels = zip(*combined_ids)
+        # print(post_ids)
+        # print(response_ids)
+        # print(labels)
 
         class_ratio = (self.n_sarcastic / self.n_current_samples)
         try:
@@ -394,19 +433,33 @@ class SARC_2_0_IronyClassificationDataset:
         except ValueError:
             response_index = rnd.randint(0, (len(response_ids) - 1))
 
-        post_id = post_ids[0]       # TODO: Is this always the best choice?
+        # post_id = post_ids[0]       # TODO: Is this always the best choice?
         response_id = response_ids[response_index]
         label = int(labels[response_index])
+
+        # print(label)
 
         """print(self.comments_json[post_id])
         print(self.comments_json[response_id])
         print(label)"""
 
-        parent_utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[post_id][0].lower()))
+        # print(self.comments_json[post_id])
+        # parent_utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[post_id][0].lower()))
+        parent_utterance, parent_unknown_words_ratio = self.text_to_indices(utterance=self.comments_json[post_id][0].lower(), first=True)
+        parent_utterance = torch.Tensor(parent_utterance)
         parent_utterance_len = parent_utterance.shape[0]
 
-        utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[response_id][0].lower()))
+        # print(parent_unknown_words_ratio)
+
+        # utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[response_id][0].lower()))
+        utterance, unknown_words_ratio = self.text_to_indices(utterance=self.comments_json[response_id][0].lower(), first=False)
+        utterance = torch.Tensor(utterance)
         utterance_len = utterance.shape[0]
+
+        if parent_unknown_words_ratio > 0.2 or unknown_words_ratio > 0.2:
+            self.__getitem__(index=(index - 1))
+
+        # print(unknown_words_ratio)
 
         # class equilibrium
         self.n_current_samples += 1
@@ -487,3 +540,14 @@ aug = naw.SynonymAug()
 augmented_data = aug.augment(data=string)
 
 print(augmented_data)"""
+
+x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
+
+# print(x.__getitem__(0))
+
+for i in range(10):
+    y = rnd.randint(0, 100000)
+    _, _, _, _, z, _ = x.__getitem__(y)
+    print(z)
+_, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
+print(z)

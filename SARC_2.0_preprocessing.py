@@ -38,7 +38,8 @@ def get_wordnet_pos(treebank_tag):
 
 
 def generate_vocabulary(root='data'):
-    if not os.path.isfile(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json')):
+    # if not os.path.isfile(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json')):
+    if not os.path.isfile(os.path.join(root, 'irony_data/SARC_2.0/comments-original-adjusted.json')):
         lemmatizer = WordNetLemmatizer()
 
         # df = pd.read_csv(os.path.join(root, 'irony_data/SARC_2.0/train-balanced.csv', names=['data'], encoding='utf-8'))
@@ -56,26 +57,35 @@ def generate_vocabulary(root='data'):
 
         print(len(comments_json))
         for i, comment_json_key in enumerate(comments_json.keys()):
+            """adjusted_comment_text_list = [abbreviation_policy.get(e, e) for e in
+                                          comments_json[comment_json_key]['text'].lower().translate(
+                                              str.maketrans(character_replacement_dict)).
+                                              replace(" '", "").replace("' ", "").split()]"""
             adjusted_comment_text_list = [abbreviation_policy.get(e, e) for e in
                                           comments_json[comment_json_key]['text'].lower().translate(
                                               str.maketrans(character_replacement_dict)).
-                                              replace(" '", "").replace("' ", "").split()]
-            comments_json[comment_json_key] = [' '.join(lemmatizer.lemmatize(y[0], get_wordnet_pos(y[1]))
-                                                        for y in pos_tag(adjusted_comment_text_list))]
+                                              replace(" '", "").replace("' ", "").replace("'s", " is").replace("'d", " would").replace("'re", " are")]
+            # print(adjusted_comment_text_list)
+            comments_json[comment_json_key] = [''.join(adjusted_comment_text_list)]
+            # print(comments_json[comment_json_key])
+            """comments_json[comment_json_key] = [' '.join(lemmatizer.lemmatize(y[0], get_wordnet_pos(y[1]))
+                                                        for y in pos_tag(adjusted_comment_text_list))]"""
 
             if i % 10000 == 0:
                 print((i / len(comments_json)) * 100)
 
-        with open(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json'), 'w') as adjusted_comments_json_file:
+        with open(os.path.join(root, 'irony_data/SARC_2.0/comments-original-adjusted.json'), 'w') as adjusted_comments_json_file:
             json.dump(comments_json, adjusted_comments_json_file)
     else:
-        with open(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
+        # with open(os.path.join(root, 'irony_data/SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
+        with open(os.path.join(root, 'irony_data/SARC_2.0/comments-original-adjusted.json'), 'r') as comments_json_file:
             comments_json = json.load(comments_json_file)
 
     vocabulary_creator = CreateVocabulary()
     for i, comment_json_key in enumerate(comments_json.keys()):
         # print(comments_json[comment_json_key][0].split())
         vocabulary_creator.add(x=comments_json[comment_json_key][0])
+        # vocabulary_creator.add(x=comments_json[comment_json_key]['text'])
 
         if i % 100000 == 0:
             print((i / len(comments_json)) * 100)
@@ -89,7 +99,8 @@ def generate_vocabulary(root='data'):
     for i, word in enumerate(list(vocab_words_frequencies)[:k]):
         vocabulary[i] = word
 
-    with open(os.path.join(root, 'irony_data/SARC_2.0/vocabulary.json'), 'w') as vocabulary_file:
+    # with open(os.path.join(root, 'irony_data/SARC_2.0/vocabulary.json'), 'w') as vocabulary_file:
+    with open(os.path.join(root, 'irony_data/SARC_2.0/vocabulary-original-adjusted.json'), 'w') as vocabulary_file:
         json.dump(vocabulary, vocabulary_file)
 
 

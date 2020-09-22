@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from Dataset import IronyClassificationDataset
 from model import IronyClassifier
+from playground import lol
 
 """x = torch.Tensor([
     [0.0, 0.1, 0.2],
@@ -36,7 +37,7 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     x = attn_weights_list[0].shape[-1]
     n_layers = len(attn_weights_list)
     # print(n_layers)
-    n_heads = 4     # change later TODO
+    n_heads = 6     # change later TODO
 
     fig, axes = plt.subplots(n_layers, n_heads)
     # print(axes)
@@ -53,7 +54,8 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
             # print(i)
             # print(axes[i, j])
             # print('shape_test: ', attn_weights_list[((i))][batch_i][j].shape)
-            imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1], axis=0), cmap=cmap))
+            imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][0], axis=0), cmap=cmap))
+            # imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1][2:], axis=0), cmap=cmap))
             # axes[i, j].label_outer()
             axes[i, j].label_outer()
 
@@ -83,9 +85,9 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
         n_tokens=1.0e5,
         d_model=300,
         d_context=300,
-        n_heads=4,
+        n_heads=6,
         n_hid=512,
-        n_layers=8,
+        n_layers=10,
         dropout_p=0.5
     )
     model.load_state_dict(state_dict=torch.load(model_path)['model_state_dict'])
@@ -129,15 +131,17 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
                 # print(_[0].shape)
                 # print(_)"""
 
-            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+            output, word_embedding, _, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
 
-            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
-                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+            output, word_embedding, _, context_tensor = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
             los = distance(output.squeeze(1), targets[1].to(device))
 
             print(los)
 
             print(targets[1])
+
+            lol(word_embedding=context_tensor)
 
             plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
 
@@ -157,5 +161,5 @@ x = [
 # plot_attn(attn_weights_list=x, batch_i=0)
 """test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
      distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
-test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_22.1.pth',
+test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_34.8.pth',
      distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)

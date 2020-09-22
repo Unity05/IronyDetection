@@ -379,6 +379,23 @@ class PositionalEncoding(nn.Module):
         return x
 
 
+class SegmentEncoding(nn.Module):
+    def __init__(self, d_model):
+        super(SegmentEncoding, self).__init__()
+
+        self.segment_embedding = nn.Embedding(num_embeddings=2, embedding_dim=d_model)
+
+    def forward(self, utterance_lens: tuple, last_utterance_lens: tuple) -> torch.Tensor:
+        max_len = max(utterance_lens)
+        max_len_last = max(last_utterance_lens)
+        token_tensor = torch.Tensor(([0.0] * (max_len_last + 1)) + ([1.0] * (max_len - 2))).to(next(self.parameters()).device)
+        segment_encoding_tensor = self.segment_embedding(token_tensor.long())
+        # a = self.segment_embedding(torch.Tensor([1.0]))
+
+        # return token_tensor
+        return segment_encoding_tensor
+
+
 class CustomTransformerDecoderLayer(nn.Module):
     def __init__(self, d_model: int = 512, n_heads: int = 12, d_feedforward: int = 2048, dropout_p: float = 0.1, activation: str = 'ReLU'):
         super(CustomTransformerDecoderLayer, self).__init__()
@@ -503,18 +520,23 @@ class ContextModel(nn.Module):
         self.d_context = d_context
 
         self.word_wise_fc_0 = nn.Linear(in_features=d_model, out_features=d_context)
-        self.dropout_0 = nn.Dropout(p=0.75)
+        self.dropout_0 = nn.Dropout(p=0.25)
         # self.sigmoid_0 = nn.Sigmoid()
 
         self.weight_fc_1 = nn.Linear(in_features=d_model, out_features=int(d_model / 2))
         self.relu_0 = nn.ReLU()
         self.weight_fc_2 = nn.Linear(in_features=int(d_model / 2), out_features=1)
-        self.dropout_2 = nn.Dropout(p=0.75)
+        self.dropout_2 = nn.Dropout(p=0.25)
+
+        self.bi_gru = nn.GRU(input_size=300, hidden_size=150, num_layers=1, bias=True, batch_first=False, dropout=0.25, bidirectional=True)
+
         self.weight_sigmoid = nn.Sigmoid()
         self.weight_softmax = nn.Softmax()
 
     def forward(self, word_embedding, utterance_lengths):
-        weight_weights = self.weight_softmax(self.weight_sigmoid(self.dropout_2(self.weight_fc_2(self.relu_0(self.weight_fc_1(word_embedding)))))).transpose(1, 0)
+        word_embedding, _ = self.bi_gru(word_embedding)
+        # weight_weights = self.weight_softmax(self.weight_sigmoid(self.dropout_2(self.weight_fc_2(self.relu_0(self.weight_fc_1(word_embedding)))))).transpose(1, 0)
+        # weight_weights = self.weight_softmax(self.dropout_2(self.weight_fc_2(self.relu_0(self.weight_fc_1(word_embedding))))).transpose(1, 0)
 
         # word_embedding = self.sigmoid_0(self.dropout_0(self.word_wise_fc_0(word_embedding)))       # shape: (sequence_length, batch_size, d_model)
 
@@ -531,8 +553,13 @@ class ContextModel(nn.Module):
         # print('weight_tensor_shape: ', weight_tensor.shape)
 
         # context_embedding = word_embedding @ weight_tensor
-        context_embedding = word_embedding @ weight_weights
-        context_embedding = context_embedding.squeeze(2)        # new shape: (batch_size, d_context)
+        # context_embedding = word_embedding @ weight_weights
+        # context_embedding = context_embedding.squeeze(2)        # new shape: (batch_size, d_context)
+        weight_tensor = torch.ones(word_embedding.shape[0], word_embedding.shape[2], 1).to(next(self.parameters()).device)     # shape: (batch_size, sequence_length, 1)
+        context_embedding = word_embedding @ weight_tensor
+        context_embedding = context_embedding.squeeze(2)    # new shape: (batch_size, d_context)
+
+        # print(context_embedding.shape)
 
         return context_embedding
 
@@ -550,16 +577,18 @@ class IronyClassifier(nn.Module):
         # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         # print(self.word_embedding.state_dict()['weight'].shape)
         self.word_embedding = self.load_word_embedding(trainable=True)
+        # self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
+        self.segment_encoding = SegmentEncoding(d_model=d_model)
 
         # encoder definition
-        # encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
-          #                                          dropout=dropout_p, activation='gelu')
-        encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads, d_feedforward=n_hid,
-                                                      dropout_p=dropout_p, activation='gelu')
-        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
-        self.transformer_encoder = CustomTransformerEncoder(encoder_layer=encoder_layer, n_layers=n_layers)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
+                                                   dropout=dropout_p, activation='gelu')
+        # encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads, d_feedforward=n_hid,
+          #                                             dropout_p=dropout_p, activation='gelu')
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        # self.transformer_encoder = CustomTransformerEncoder(encoder_layer=encoder_layer, n_layers=n_layers)
 
         self.classifier = nn.Linear(in_features=(d_model), out_features=1)
         self.sigmoid = nn.Sigmoid()
@@ -568,18 +597,20 @@ class IronyClassifier(nn.Module):
 
     def load_word_embedding(self, trainable=True):
         # create word embedding state dict
-        vectors = bcolz.open('data/irony_data/glove/6B.300.dat')
-        weights_matrix = np.zeros((100003, 300))
+        vectors = bcolz.open('data/irony_data/SARC_2.0/6B.300_original_adjusted.dat')
+        # vectors = bcolz.open('data/irony_data/FastText/300d-1M-SARC_2_0_Adjusted.dat')
+        weights_matrix = np.zeros((100004, 300))
         for i in range(100000):
             weights_matrix[i] = vectors[i]
             # TODO: optimize
         weights_matrix[100000] = nn.init.xavier_uniform(torch.empty((1, 1, 300)))       # 'ukw' (unknown word) weights
         weights_matrix[100001] = nn.init.xavier_uniform(torch.empty((1, 1, 300)))       # 'cls' (class token) weights
         weights_matrix[100002] = torch.zeros((1, 1, 300))       # padding token
+        weights_matrix[100003] = nn.init.xavier_uniform(torch.empty(1, 1, 300))     # 'sep' (seperating token)
 
         # print(weights_matrix)
 
-        word_embedding = nn.Embedding(num_embeddings=100003, embedding_dim=300)
+        word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
         word_embedding.load_state_dict({'weight': torch.from_numpy(weights_matrix)})
         if not trainable:
             word_embedding.weight.requires_grad = False
@@ -592,20 +623,26 @@ class IronyClassifier(nn.Module):
         # print('utterance_lens: ', utterance_lens)
         # print('last_utterance_lens: ', last_utterance_lens)
         max_len = max(utterance_lens)
-        # max_len_last = max(last_utterance_lens)
+        max_len_last = max(last_utterance_lens)
         # src_mask = torch.Tensor(([0] * utterance_lens[0]) + ([float('-inf')] * (1 - utterance_lens[0])))
 
         src_mask = []
 
-        # for current_len, last_current_len in zip(utterance_lens, last_utterance_lens):
-        for current_len in utterance_lens:
+        for current_len, last_current_len in zip(utterance_lens, last_utterance_lens):
+        # print(type(utterance_lens))
+        # for current_len in utterance_lens:
             # src_mask.append(([False] * current_len) + ([True] * (max_len - current_len)) + [False] + ([False] * (last_current_len)) + ([True] * (max_len_last - (last_current_len))))
+            # src_mask.append([True] + ([False] * current_len) + ([True] * (max_len - current_len)) + ([False] * (last_current_len)) + ([True] * (max_len_last - (last_current_len))))
             # src_mask.append(([False] * last_current_len) + ([True] * (max_len_last - last_current_len)) + [False] + ([False] * (current_len)) + ([True] * (max_len - (last_current_len))))
+            #  src_mask.append([True] + ([False] * (last_current_len - 1)) + ([True] * (max_len_last - last_current_len)) + [True] + ([False] * ((current_len - 3))) + [True] + ([True] * ((max_len) - ((current_len)))))
+            src_mask.append([False] + ([False] * (last_current_len - 1)) + ([True] * (max_len_last - last_current_len)) + [False] + ([False] * ((current_len - 3))) + ([True] * ((max_len) - ((current_len)))) + [False])
             # src_mask.append(([False] * (last_current_len)) + ([True] * (max_len_last - (last_current_len))) + [False] + ([False] * current_len) + ([True] * (max_len - current_len)))
             # src_mask.append([False] + [False] + ([False] * current_len) + ([True] * (max_len - current_len)))
             # src_mask.append([False] + [False] + ([False] * current_len) + ([True] * (max_len - current_len)))
-            src_mask.append([False] + ([False] * current_len) + ([True] * (max_len - current_len)))
+            #  src_mask.append([True] + [False] + [True] + ([False] * (current_len - 2)) + ([True] * (max_len - current_len)))
             # src_mask.append(([False] * current_len) + ([True] * (max_len - current_len)))
+
+        # print('Okay?')
 
         src_mask = torch.BoolTensor(src_mask).to(next(self.parameters()).device)
         # print(src_mask)
@@ -647,7 +684,7 @@ class IronyClassifier(nn.Module):
 
         if first and chain_training:       # TODO: Only for training.
             # print(src.shape)
-            # return None, word_embedding, None
+            # return None, word_embedding, None, None
             return None, word_embedding
 
         # print(context_tensor.shape)
@@ -655,10 +692,16 @@ class IronyClassifier(nn.Module):
         # context_tensor = self.context_fc_0(context_tensor.squeeze(0))
 
         # print(context_tensor.shape)
-        if not first:
+        """if not first:
+            # print('Not first.')
             context_tensor = self.context_embedding(word_embedding=last_word_embedding, utterance_lengths=last_utterance_lens)
         else:
-            context_tensor = self.generate_context().to(next(self.parameters()).device)
+            context_tensor = self.generate_context().to(next(self.parameters()).device)"""
+
+        # print('Context Tensor Ready.')
+        context_tensor = last_word_embedding
+        # print(context_tensor.shape)
+        # print(self.generate_context().shape)
         # context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
         # print(context_tensor.device)
         # print(src.shape[0])
@@ -674,9 +717,27 @@ class IronyClassifier(nn.Module):
         # src = torch.cat((context_tensor.unsqueeze(0), torch.zeros(1, self.batch_size, 300).to(torch.device('cuda')), src), dim=0)
         # print(context_tensor.shape)
         # print(src.shape)
-        src = torch.cat((context_tensor.unsqueeze(0), src), dim=0)
+        # print(src[1:].shape)
+        # print(src[0].shape)
+        # print(src[0].unsqueeze(0).shape)
+        # src_0 = self.positional_encoder(src[1:])
 
+        # context_tensor = 10 * context_tensor
+
+        src_0 = src[1:]
+        # src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), torch.zeros(1, 30, 300).to(next(self.parameters()).device), src_0), dim=0)
+        # src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), src_0), dim=0)
+        # src = torch.cat((src[0].unsqueeze(0), context_tensor, torch.zeros(1, 30, 300).to(next(self.parameters()).device), src_0), dim=0)
+        src = torch.cat((src[0].unsqueeze(0), context_tensor, src_0), dim=0)
+        # src[1:] = self.positional_encoder(src[1:])
         src = self.positional_encoder(src)
+        # print(src.shape)
+        # print(self.segment_encoding(utterance_lens=utterance_lens, last_utterance_lens=last_utterance_lens).shape)
+        src += self.segment_encoding(utterance_lens=utterance_lens, last_utterance_lens=last_utterance_lens).unsqueeze(1).repeat(1, self.batch_size, 1)
+        # src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), src[1:]), dim=0)
+        # print(src.shape)
+
+        # src = self.positional_encoder(src)
 
         # print(src.shape)
         # print('(1) src_shape: ', src.shape)
@@ -690,11 +751,11 @@ class IronyClassifier(nn.Module):
 
         # src_mask = None
 
-        out, attn_weights_list = self.transformer_encoder(src, src_key_padding_mask=src_mask)
-        # out = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        #  out, attn_weights_list = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        out = self.transformer_encoder(src, src_key_padding_mask=src_mask)
         # print(out.shape)
         # out = self.classifier(out[max(last_utterance_lens)])
-        out = self.classifier(out[1])
+        out = self.classifier(out[0])
         # out = self.sigmoid(out)
 
         # new_context_tensor = self.context_embedding(word_embedding=word_embedding, utterance_lengths=utterance_lens)
@@ -706,5 +767,5 @@ class IronyClassifier(nn.Module):
         # print(src)
         # print(word_embedding)
         # print('Lol.')
-        # return out, word_embedding, attn_weights_list
+        # return out, word_embedding, attn_weights_list, context_tensor
         return out, word_embedding

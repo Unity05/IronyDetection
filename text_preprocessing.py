@@ -329,9 +329,44 @@ def denoise_dataset(remove_indices_path):
     adjusted_train_df.to_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv', index=False, encoding='utf-8')
 
 
+def adjust_SARC_2_dataset(root='data/irony_data'):
+    lemmatizer = WordNetLemmatizer()
+
+    with open(os.path.join(root, 'SARC_2.0/adjusted-comments.json'), 'r') as sarc_2_dataset_file:
+        sarc_2_dataset = json.load(sarc_2_dataset_file)
+
+    character_replacement_dict = {'.': '', '…': '', ',': '', '(': '', ')': '', '-': ' ', ';': '', ':': '',
+                                  '?': ' ?', '!': ' !', '=': '', '*': '', '~': ' ', '%': '', '"': '', '$': '',
+                                  '^': ' ', '#': '', '<': ' ', '>': ' ', '_': ' ', '{': ' ', '}': ' ', '/': ' ',
+                                  '\\': ' ', '|': ''}
+
+    with open('data/irony_data/abbr_replacers', 'r') as file:
+        abbreviation_policy = json.load(file)
+
+    adjusted_sarc_2_dataset = {}
+    sarc_2_dataset_length = len(sarc_2_dataset)
+    last_time = time.process_time()
+    for i, key in enumerate(sarc_2_dataset.keys()):
+        if i % 1000 == 0 and i != 0:
+            print((i / sarc_2_dataset_length), ' | Estimated duration: ', ((1 / (i / sarc_2_dataset_length)) * (time.process_time() - last_time)))
+        text = sarc_2_dataset[key][0]
+        # text = "It is a machine's destiny."
+        # print(text)
+        text = text.lower().translate(str.maketrans(character_replacement_dict)).replace(" '", "").replace("' ", "").split()
+        text = lemmatize_list(x=text, abbreviation_policy=abbreviation_policy).split()
+        text = ' '.join([lemmatizer.lemmatize(y[0], get_wordnet_pos(y[1])) for y in pos_tag(text)]).replace("'s", "")
+        # print(text)
+        # exit(-1)
+        adjusted_sarc_2_dataset[key] = [text]
+
+    with open(os.path.join(root, 'SARC_2.0/readjusted-comments.json'), 'w') as adjusted_sarc_2_dataset_file:
+        json.dump(adjusted_sarc_2_dataset, adjusted_sarc_2_dataset_file)
+
+
 # print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
 # generate_vocabulary(root='data', max_len=64)
 # update_data(root='data')
 # split_data()
 # create_headlines_csv(root='data/irony_data/sarcastic_headlines')
-denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_2.json')
+# denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_2.json')
+adjust_SARC_2_dataset(root='data/irony_data')

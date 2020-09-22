@@ -10,10 +10,10 @@ from model import IronyClassifier
 import warnings
 
 
-# Manual seed value.
-seed_val = 42
+"""# Manual seed value.
+seed_val = 24
 torch.manual_seed(seed_val)
-torch.cuda.manual_seed_all(seed_val)
+torch.cuda.manual_seed_all(seed_val)"""
 
 
 train_losses = []
@@ -38,8 +38,8 @@ remove_samples_indices = []
 def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
     continue_training = False
 
-    # model.train()
-    model.eval()
+    model.train()
+    # model.eval()
     average_meter = AverageMeter()
     comment_average_meter = AverageMeter()
     parent_comment_average_meter = AverageMeter()
@@ -58,7 +58,8 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
 
         try:
             # data = train_dataloader[i]
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            # utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
 
             chain_training = (utterance[0] != None)
 
@@ -105,9 +106,23 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 # losses.append(los.item())
 
                 # comment
+                # print(word_embedding)
                 # print(word_embedding.shape)
+                # print(utterances)
+                # print(utterance_lens[0])
+                # print(type(utterances))
+                # print(type(utterance_lens))
+                # print(type(False))
+                # print(type(word_embedding))
                 # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-                output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+                output, word_embedding = model(
+                    src=utterances[1],
+                    utterance_lens=utterance_lens[1],
+                    first=False,
+                    last_utterance_lens=utterance_lens[0],
+                    last_word_embedding=word_embedding
+                )
+                # output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
                 # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=word_embedding.shape[0])
                 # print(output)
                 # print(targets[1])
@@ -128,8 +143,8 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 one_train_losses.append(loss.item())"""
 
             # ==== backward ====
-            if loss.item() < 0.9 or not chain_training:
-            # if True:
+            # if loss.item() < 0.9 or not chain_training:
+            if True:
                 # print(loss.item())
                 optim.zero_grad()
                 loss.backward()
@@ -165,7 +180,7 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 parent_comment_average_loss = parent_comment_average_meter.average()
                 train_losses.append(average_loss)
                 # train_losses += [average_loss]
-                class_ratio = 0.5
+                # class_ratio = 0.5
                 # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Parent_comment_loss: {parent_comment_average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
                 print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
                 # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Target: {targets[1]} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
@@ -227,7 +242,8 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
     for i, data in enumerate(valid_dataloader):
         try:
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target, = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            # utterance, utterance_len, parent_utterance, parent_utterance_len, target, = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data
 
             chain_training = (utterance[0] != None)
 
@@ -280,24 +296,24 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
 
 def main(version):
-    CONTINUE_TRAINING = True
+    CONTINUE_TRAINING = False
 
     hyper_params = {
-        'n_epochs': 10,
+        'n_epochs': 15,
 
         'vocabulary_size': 1.0e5,
         'batch_size': 30,
 
         'd_model': 300,
         'd_context': 300,
-        'n_heads': 4,
+        'n_heads': 6,
         'n_hids': 512,
-        'n_layers': 10,
+        'n_layers': 7,
         'dropout_p': 0.25,
 
         'max_norm': 0.25,
-        'i_lr': 1.0e-7,
-        'n_batches_warmup': 2400
+        'i_lr': 1.0e-5,
+        'n_batches_warmup': 5000
     }
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -305,8 +321,8 @@ def main(version):
 
     # define dataset loaders
 
-    train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
-    # train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    # train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
+    train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     # train_dataset = SarcasmHeadlinesDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
@@ -318,8 +334,8 @@ def main(version):
     # train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=False)
     # train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, sampler=train_sampler, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0, collate_fn=collate_fn)
 
-    valid_dataset = IronyClassificationDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    # valid_dataset = SARC_2_0_IronyClassificationDataset(mode='test', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    # valid_dataset = IronyClassificationDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    valid_dataset = SARC_2_0_IronyClassificationDataset(mode='test', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     # valid_dataset = SarcasmHeadlinesDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     valid_dataloader = torch.utils.data.DataLoader(
         dataset=valid_dataset,
@@ -362,22 +378,22 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_21.5.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_35.14.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
-            param_group['lr'] = 1.0e-7
+            param_group['lr'] = 1.0e-5
         # lr_scheduler = PlateauLearningRateScheduler(i_lr=3.0e-8, n_batches_warmup=0, patience=3, factor=0.6)
         model.word_embedding.weight.requires_grad = True
 
 
     # train
 
-    for i_epoch in range(6, (6 + hyper_params['n_epochs'])):
+    for i_epoch in range(0, (0 + hyper_params['n_epochs'])):
         lr = train(model=model, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
                    distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
                    lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
-        """valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
-              distance=distance, epoch=i_epoch)"""
+        valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
+              distance=distance, epoch=i_epoch)
         """valid(model=model, valid_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
               distance=distance, epoch=i_epoch)"""
 
@@ -400,4 +416,4 @@ def main(version):
 
 
 if __name__ == '__main__':
-    main(version=23)
+    main(version=35)
