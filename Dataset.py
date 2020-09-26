@@ -353,20 +353,26 @@ class SARC_2_0_IronyClassificationDataset:
 
         # ==== Load Vocabulary Data ====
 
-        # with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary_original_adjusted.json'), 'r') as vocabulary_file:
-        with open(os.path.join(root, 'SARC_2.0/vocabulary_fast_text_adjusted.json'), 'r') as vocabulary_file:
+        #  with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary_original_adjusted.json'), 'r') as vocabulary_file:
+        #  with open(os.path.join(root, 'SARC_2.0/vocabulary_fast_text_adjusted.json'), 'r') as vocabulary_file:
+        with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
             vocabulary_dict = json.load(vocabulary_file)
-        self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
-        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
-        self.vocabulary_dict['ukw'] = '100000'
-        self.vocabulary_dict['sep'] = '100003'
+        self.vocabulary_dict_indices = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict_indices['100000'] = 'ukw'
+        self.vocabulary_dict_indices['100003'] = 'sep'
+        self.vocabulary_dict_indices['100001'] = 'cls'
+        self.vocabulary_dict_indices['100002'] = 'pad'
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict_indices.items()}
 
         self.n_current_samples = 0.1
         self.n_sarcastic = 0
 
     def text_to_indices(self, utterance, first):
-        # print(utterance)
-        indices = [100001]       # '<cls>' token
+        #  print(utterance)
+        if first:
+            indices = [100001]       # '<cls>' token
+        else:
+            indices = []
         if not first:
             indices.append(100003)
         num_unknown_words = 1.0e-9
@@ -389,6 +395,15 @@ class SARC_2_0_IronyClassificationDataset:
             unkown_words_frequency = 1.0
 
         return indices, unkown_words_frequency
+
+    def indices_to_text(self, indices):
+        assert type(indices) == torch.Tensor, f"'indices' (type: {type(indices)}) should be of type 'torch.Tensor'."
+        indices = indices.tolist()
+        utterance = []
+        for index in indices:
+            utterance.append(self.vocabulary_dict_indices[str(int(index))])
+
+        return ' '.join(utterance)
 
     def __getitem__(self, index):
         data = self.df.iloc[index].item()
@@ -454,6 +469,7 @@ class SARC_2_0_IronyClassificationDataset:
         # utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[response_id][0].lower()))
         utterance, unknown_words_ratio = self.text_to_indices(utterance=self.comments_json[response_id][0].lower(), first=False)
         utterance = torch.Tensor(utterance)
+        #  print(self.indices_to_text(indices=utterance))
         utterance_len = utterance.shape[0]
 
         if parent_unknown_words_ratio > 0.2 or unknown_words_ratio > 0.2:

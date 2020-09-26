@@ -35,7 +35,7 @@ def collate_fn(batch):
 remove_samples_indices = []
 
 
-def train(model, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
+def train(model, train_dataset, train_dataloader, device, batch_size, distance, optim, max_norm, epoch, lr_scheduler, continue_training, valid_dataloader):
     continue_training = False
 
     model.train()
@@ -60,6 +60,13 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
             # data = train_dataloader[i]
             # utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
             utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+
+            """print('-' * 24)
+            print(train_dataset.indices_to_text(indices=parent_utterance[0]))
+            print(train_dataset.indices_to_text(indices=utterance[0]))
+            print(target[0])
+            print(utterance_len)
+            print(parent_utterance_len)"""
 
             chain_training = (utterance[0] != None)
 
@@ -124,9 +131,14 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 )
                 # output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
                 # output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False, last_word_embedding=word_embedding, last_utterance_lens=word_embedding.shape[0])
-                # print(output)
-                # print(targets[1])
-                los = distance(output.squeeze(1), targets[1].to(device))
+                #  print(output)
+                #  print(type(output))
+                #  print(targets[1])
+                #  print(type(targets[1]))
+                #  print(output.shape)
+                #  print(targets[1].shape)
+                #  los = distance(output.squeeze(1), targets[1].to(device))
+                los = distance(output, targets[1].long().to(device))
                 loss = los
                 losses.append(los.item())
 
@@ -369,7 +381,8 @@ def main(version):
     optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5, amsgrad=False)
     # optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
     # distance = nn.BCELoss()
-    distance = nn.BCEWithLogitsLoss()
+    #  distance = nn.BCEWithLogitsLoss()
+    distance = nn.CrossEntropyLoss()
     lr_scheduler = CosineLearningRateScheduler(
         i_lr=hyper_params['i_lr'],
         n_batches_warmup=hyper_params['n_batches_warmup'],
@@ -389,7 +402,7 @@ def main(version):
     # train
 
     for i_epoch in range(0, (0 + hyper_params['n_epochs'])):
-        lr = train(model=model, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
+        lr = train(model=model, train_dataset=train_dataset, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
                    distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
                    lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
         valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
