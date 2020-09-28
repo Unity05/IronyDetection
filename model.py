@@ -579,8 +579,8 @@ class IronyClassifier(nn.Module):
 
         # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         # print(self.word_embedding.state_dict()['weight'].shape)
-        self.word_embedding = self.load_word_embedding(trainable=True)
-        # self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
+        #  self.word_embedding = self.load_word_embedding(trainable=True)
+        self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
         self.segment_encoding = SegmentEncoding(d_model=d_model)
@@ -595,7 +595,8 @@ class IronyClassifier(nn.Module):
 
         self.classifier_0 = nn.Linear(in_features=(d_model), out_features=int(d_model / 2))
         self.gelu_0 = nn.GELU()
-        self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=2)
+        #  self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=2)
+        self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=1)
         self.sigmoid = nn.Sigmoid()
 
         self.context_embedding = ContextModel(d_model=d_model, d_context=d_context)
@@ -682,8 +683,9 @@ class IronyClassifier(nn.Module):
 
         # print('src: ', src)
 
-        src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
-        # print(src.shape)
+        #  src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
+        src = self.word_embedding(src.long())
+        #  print(src.shape)
 
         #  word_embedding = src[1:]
         word_embedding = src
@@ -753,6 +755,7 @@ class IronyClassifier(nn.Module):
         torch.autograd.set_detect_anomaly = True
         # src_mask = self.generate_source_mask(src=src)
         src_mask = self.generate_src_mask(utterance_lens=utterance_lens, last_utterance_lens=last_utterance_lens)
+        #  print(src_mask)
         #  print('src_mask_shape: ', src_mask.shape)
         # src_mask = None
 

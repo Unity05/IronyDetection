@@ -380,6 +380,7 @@ class SARC_2_0_IronyClassificationDataset:
             # print(word)
             # TODO
             try:
+                #  indices.append(int(self.vocabulary_dict[rnd.choice(list(self.vocabulary_dict.keys()))]))
                 indices.append(int(self.vocabulary_dict[word]))
             except KeyError:
                 num_unknown_words += 1
@@ -458,7 +459,7 @@ class SARC_2_0_IronyClassificationDataset:
         print(self.comments_json[response_id])
         print(label)"""
 
-        # print(self.comments_json[post_id])
+        #  print('parent_utterance: ', self.comments_json[post_id])
         # parent_utterance = torch.Tensor(self.text_to_indices(utterance=self.comments_json[post_id][0].lower()))
         parent_utterance, parent_unknown_words_ratio = self.text_to_indices(utterance=self.comments_json[post_id][0].lower(), first=True)
         parent_utterance = torch.Tensor(parent_utterance)
@@ -470,6 +471,7 @@ class SARC_2_0_IronyClassificationDataset:
         utterance, unknown_words_ratio = self.text_to_indices(utterance=self.comments_json[response_id][0].lower(), first=False)
         utterance = torch.Tensor(utterance)
         #  print(self.indices_to_text(indices=utterance))
+        #  print('utterance: ', self.comments_json[response_id][0])
         utterance_len = utterance.shape[0]
 
         if parent_unknown_words_ratio > 0.2 or unknown_words_ratio > 0.2:
@@ -485,6 +487,93 @@ class SARC_2_0_IronyClassificationDataset:
 
     def __len__(self):
         # return len(self.comments_json)
+        return len(self.df)
+
+
+class SARC_2_0_Dataset:
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+        self.mode = mode
+
+        # ==== Load Training Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
+            self.comments_json = json.load(comments_json_file)
+
+        if mode == 'train':
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-balanced-adjusted.csv'), encoding='utf-8')
+        else:
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced.csv'), names=['data'], encoding='utf-8')
+
+        # ==== Load Vocabulary Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
+            vocabulary_dict = json.load(vocabulary_file)
+        self.vocabulary_dict_indices = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict_indices['100000'] = 'ukw'
+        self.vocabulary_dict_indices['100003'] = 'sep'
+        self.vocabulary_dict_indices['100001'] = 'cls'
+        self.vocabulary_dict_indices['100002'] = 'pad'
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict_indices.items()}
+
+    def text_to_indices(self, utterance, first):
+        #  print(utterance)
+        if first:
+            indices = [100001]       # '<cls>' token
+        else:
+            indices = []
+        if not first:
+            indices.append(100003)
+        #  num_unknown_words = 1.0e-9
+        for word in utterance.split():
+            # print(word)
+            # TODO
+            try:
+                #  indices.append(int(self.vocabulary_dict[rnd.choice(list(self.vocabulary_dict.keys()))]))
+                indices.append(int(self.vocabulary_dict[word]))
+            except KeyError:
+                #  num_unknown_words += 1
+                #  print('Hi.')
+                #  print(word)
+                indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
+        if not first:
+            indices.append(100003)
+
+        """try:
+            unkown_words_frequency = (num_unknown_words / len(utterance.split()))
+        except ZeroDivisionError:
+            unkown_words_frequency = 1.0"""
+
+        #  return indices, unkown_words_frequency
+        return indices
+
+    def __getitem__(self, index):
+        #  data = self.df.loc[[index]]['data']
+        #  print(self.df)
+        #  data = self.df.iloc[index].item()
+        data = self.df.loc[index]
+        #  print(data)
+        #  print(data['data'])
+        #  print(data.columns)
+        #  print(data['parent_ids'])
+        #  print(data['response_ids'])
+        #  print(data['labels'])
+
+        parent_id = data['parent_ids']
+        response_id = data['response_ids']
+        label = int(data['labels'])
+
+        parent_utterance = self.comments_json[parent_id][0].lower()
+        parent_utterance = self.text_to_indices(utterance=parent_utterance, first=True)
+        parent_utterance = torch.Tensor(parent_utterance)
+        parent_utterance_len = parent_utterance.shape[0]
+        response_utterance = self.comments_json[response_id][0].lower()
+        response_utterance = self.text_to_indices(utterance=response_utterance, first=False)
+        response_utterance = torch.Tensor(response_utterance)
+        response_utterance_len = response_utterance.shape[0]
+
+        return response_utterance, response_utterance_len, parent_utterance, parent_utterance_len, label
+
+    def __len__(self):
         return len(self.df)
 
 
@@ -557,7 +646,8 @@ augmented_data = aug.augment(data=string)
 
 print(augmented_data)"""
 
-x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
+"""#  x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
+x = SARC_2_0_Dataset(mode='train', top_k=1.0e5, root='data/irony_data')
 
 # print(x.__getitem__(0))
 
@@ -566,4 +656,4 @@ for i in range(10):
     _, _, _, _, z, _ = x.__getitem__(y)
     print(z)
 _, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
-print(z)
+print(z)"""

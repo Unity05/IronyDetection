@@ -5,7 +5,7 @@ import random as rnd
 import torch
 
 
-"""# vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/glove/6B.300.dat', mode='w')
+# vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/glove/6B.300.dat', mode='w')
 vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/SARC_2.0/6B.300_original.dat', mode='w')
 
 
@@ -51,7 +51,7 @@ vectors.flush()
 with open('data/irony_data/SARC_2.0/glove_adjusted_vocabulary_original_adjusted.json', 'w') as glove_adjusted_vocabulary_file:
     json.dump(word_dict, glove_adjusted_vocabulary_file)
 
-print('words_changed: ', words_changed)"""
+print('words_changed: ', words_changed)
 
 """vectors = bcolz.open('data/irony_data/glove/6B.200.dat')
 weights_matrix = np.zeros((100000, 200))
@@ -60,7 +60,7 @@ for i in range(100000):
 
 torch.save(torch.from_numpy(weights_matrix), 'data/irony_data/glove/6B.200.dat.pth')"""
 
-vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/FastText/300d-1M.dat', mode='w')
+"""vectors = bcolz.carray(np.zeros(1), rootdir='data/irony_data/FastText/300d-1M.dat', mode='w')
 
 with open('data/irony_data/SARC_2.0/vocabulary.json', 'r') as sarc_2_0_comments_dict_file:
     sarc_2_0_comments_dict = json.load(sarc_2_0_comments_dict_file)
@@ -102,6 +102,6 @@ vectors.flush()
 with open('data/irony_data/SARC_2.0/vocabulary_fast_text_adjusted.json', 'w') as vocabulary_fast_text_adjusted_dict_file:
     json.dump(word_dict, vocabulary_fast_text_adjusted_dict_file)
 
-print('words changed: ', words_changed)
+print('words changed: ', words_changed)"""
 
 """vectors = bcolz.open('data/irony_data/glove/6B.200.dat')"""

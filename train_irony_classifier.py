@@ -4,7 +4,7 @@ import json
 import gc
 
 from helper_functions import AverageMeter, CosineLearningRateScheduler, PlateauLearningRateScheduler
-from Dataset import IronyClassificationDataset, SARC_2_0_IronyClassificationDataset, SarcasmHeadlinesDataset
+from Dataset import IronyClassificationDataset, SARC_2_0_IronyClassificationDataset, SarcasmHeadlinesDataset, SARC_2_0_Dataset
 from model import IronyClassifier
 
 import warnings
@@ -45,6 +45,9 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
     parent_comment_average_meter = AverageMeter()
     n_exceptions = 0
 
+    correct = 0
+    total = 1
+
     all_train_losses = []
     zero_train_losses = []
     one_train_losses = []
@@ -57,9 +60,9 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
         # print('Lol.')
 
         try:
-            # data = train_dataloader[i]
-            # utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            #  data = train_dataloader[i]
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            #  utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
 
             """print('-' * 24)
             print(train_dataset.indices_to_text(indices=parent_utterance[0]))
@@ -84,6 +87,8 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
                 losses.append(loss.item())
             else:
                 utterance = nn.utils.rnn.pad_sequence(sequences=utterance, batch_first=False, padding_value=100002).to(device)
+                #  print(utterance.permute(1, 0))
+                #  print('utterance_tokens: ', train_dataset.indices_to_text(indices=utterance.permute(1, 0)[0]))
                 utterances = [parent_utterance, utterance]
                 utterance_lens = [parent_utterance_len, utterance_len]
                 targets = [torch.zeros((batch_size), dtype=torch.float32), target]
@@ -137,12 +142,15 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
                 #  print(type(targets[1]))
                 #  print(output.shape)
                 #  print(targets[1].shape)
-                #  los = distance(output.squeeze(1), targets[1].to(device))
-                los = distance(output, targets[1].long().to(device))
+                los = distance(output.squeeze(1), targets[1].to(device))
+                #  los = distance(output, targets[1].long().to(device))
                 loss = los
                 losses.append(los.item())
 
                 train_losses.append(los.item())
+
+                """correct += (torch.where(output.squeeze(1) > 0.5, torch.Tensor([1.0]), torch.Tensor([0.0])) == targets[1]).sum().item()
+                total += output.shape[0]"""
 
             """all_train_losses.append(loss.item())
 
@@ -191,8 +199,8 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
                 comment_average_loss = comment_average_meter.average()
                 parent_comment_average_loss = parent_comment_average_meter.average()
                 train_losses.append(average_loss)
-                # train_losses += [average_loss]
-                # class_ratio = 0.5
+                #  train_losses += [average_loss]
+                class_ratio = 0.5
                 # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Parent_comment_loss: {parent_comment_average_loss} | Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}%')
                 print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
                 # print(f'Loss: {average_loss} | Comment_loss: {comment_average_loss} | Target: {targets[1]} |  Batch: {i} / {len(train_dataloader)} | Epoch: {epoch} | lr: {lr} | Exception_Rate: {n_exceptions / 50}% | Class_ratio: {class_ratio}')
@@ -245,6 +253,8 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
     with open('models/irony_classification/remove_samples_indices_dict_2.json', 'w') as remove_samples_indices_dict_file:
         json.dump(remove_samples_indices_dict, remove_samples_indices_dict_file)
 
+    print(f'Accuracy: {(correct / total)}')
+
     return lr
 
 
@@ -252,9 +262,12 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
     model.eval()
     average_meter = AverageMeter()
 
+    correct = 0
+    total = 0
+
     for i, data in enumerate(valid_dataloader):
         try:
-            # utterance, utterance_len, parent_utterance, parent_utterance_len, target, = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            #  utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
             utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data
 
             chain_training = (utterance[0] != None)
@@ -289,9 +302,28 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
                   #                                 last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
                 output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
                                                last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-                los = distance(output.squeeze(1), targets[1].to(device))
+                #  los = distance(output.squeeze(1), targets[1].to(device))
+                """print(output.shape)
+                print(output)
+                output = torch.nn.LogSoftmax()(output)
+                print(output)
+                _, predicted = torch.max(output, dim=-1)
+                #  c = (torch.max(output, dim=-1) == targets[1])
+                c = (predicted == targets[1]).sum().item()
+                #  print(output)
+                #  print(c)
+                #  print(targets[1])
+                #  print(predicted)
+                #  exit(-1)
+                correct += c
+                total += predicted.shape[0]
+                los = distance(output, targets[1].long().to(device))
                 loss = los
                 losses.append(los.item())
+                #  print(los.item())"""
+
+                correct += (torch.where(output.squeeze(1) > 0.5, torch.Tensor([1.0]), torch.Tensor([0.0])) == targets[1]).sum().item()
+                total += output.shape[0]
 
             # ==== log ====
             if loss.item() != 0:
@@ -304,11 +336,11 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
     average_loss = average_meter.average()
     valid_losses.append(average_loss)
-    print(f'(Validation) Loss: {average_loss} | Epoch: {epoch}')
+    print(f'(Validation) Loss: {average_loss} | Epoch: {epoch} | Accuracy: {(correct / total)}')
 
 
 def main(version):
-    CONTINUE_TRAINING = False
+    CONTINUE_TRAINING = True
 
     hyper_params = {
         'n_epochs': 15,
@@ -318,14 +350,14 @@ def main(version):
 
         'd_model': 300,
         'd_context': 300,
-        'n_heads': 6,
+        'n_heads': 10,
         'n_hids': 512,
-        'n_layers': 7,
+        'n_layers': 12,
         'dropout_p': 0.25,
 
         'max_norm': 0.25,
         'i_lr': 1.0e-5,
-        'n_batches_warmup': 5000
+        'n_batches_warmup': 7500
     }
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -333,9 +365,10 @@ def main(version):
 
     # define dataset loaders
 
-    # train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
-    train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    # train_dataset = SarcasmHeadlinesDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    #  train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
+    #  train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    #  train_dataset = SarcasmHeadlinesDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
+    train_dataset = SARC_2_0_Dataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=hyper_params['batch_size'],
@@ -379,10 +412,10 @@ def main(version):
 
     params = [p for p in model.parameters() if p.requires_grad]
     optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5, amsgrad=False)
-    # optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
-    # distance = nn.BCELoss()
-    #  distance = nn.BCEWithLogitsLoss()
-    distance = nn.CrossEntropyLoss()
+    #  optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
+    #  distance = nn.BCELoss()
+    distance = nn.BCEWithLogitsLoss()
+    #  distance = nn.CrossEntropyLoss()
     lr_scheduler = CosineLearningRateScheduler(
         i_lr=hyper_params['i_lr'],
         n_batches_warmup=hyper_params['n_batches_warmup'],
@@ -391,7 +424,7 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_35.14.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_35.3.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
             param_group['lr'] = 1.0e-5
@@ -402,9 +435,9 @@ def main(version):
     # train
 
     for i_epoch in range(0, (0 + hyper_params['n_epochs'])):
-        lr = train(model=model, train_dataset=train_dataset, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
+        """lr = train(model=model, train_dataset=train_dataset, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
                    distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
-                   lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
+                   lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)"""
         valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
               distance=distance, epoch=i_epoch)
         """valid(model=model, valid_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
