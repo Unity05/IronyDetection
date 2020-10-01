@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from Dataset import IronyClassificationDataset
 from model import IronyClassifier
-from playground import lol
+#  from playground import lol
 
 """x = torch.Tensor([
     [0.0, 0.1, 0.2],
@@ -85,9 +85,9 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
         n_tokens=1.0e5,
         d_model=300,
         d_context=300,
-        n_heads=6,
-        n_hid=512,
-        n_layers=10,
+        n_heads=10,
+        n_hid=1024,
+        n_layers=12,
         dropout_p=0.5
     )
     model.load_state_dict(state_dict=torch.load(model_path)['model_state_dict'])
@@ -137,11 +137,13 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
                                                               last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
             los = distance(output.squeeze(1), targets[1].to(device))
 
+            print(output)
+
             print(los)
 
             print(targets[1])
 
-            lol(word_embedding=context_tensor)
+            #  lol(word_embedding=context_tensor)
 
             plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
 
@@ -161,5 +163,5 @@ x = [
 # plot_attn(attn_weights_list=x, batch_i=0)
 """test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
      distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
-test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_34.8.pth',
+test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_36.10.pth',
      distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)

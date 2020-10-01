@@ -365,9 +365,9 @@ class PositionalEncoding(nn.Module):
 
         position = torch.arange(start_index, max_seq_len, dtype=torch.float).unsqueeze(1)
         # TODO: Adapt 'div_term' (https://datascience.stackexchange.com/questions/51065/what-is-the-positional-encoding-in-the-transformer-model)
-        """div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) *
-                             (- math.log(max_timescale) / d_model))     # OpenAI's position encoding based on BERT"""
-        div_term = 1 / torch.pow(10000, (2 * (torch.arange(0, d_model, 2, dtype=torch.float))) / d_model)
+        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) *
+                             (- math.log(max_timescale) / d_model))     # OpenAI's position encoding based on BERT
+        #  div_term = 1 / torch.pow(10000, (2 * (torch.arange(0, d_model, 2, dtype=torch.float))) / d_model)
         # using position encoding as in the paper, not as in the code
         position_encoding[:, 0::2] = torch.sin(div_term * position)     # for every even embedding vector index
         position_encoding[:, 1::2] = torch.cos(div_term * position)     # for every odd embedding vector index
@@ -390,7 +390,8 @@ class SegmentEncoding(nn.Module):
     def forward(self, utterance_lens: tuple, last_utterance_lens: tuple) -> torch.Tensor:
         max_len = max(utterance_lens)
         max_len_last = max(last_utterance_lens)
-        token_tensor = torch.Tensor(([0.0] * (max_len_last + 1)) + ([1.0] * (max_len - 1))).to(next(self.parameters()).device)
+        #  token_tensor = torch.Tensor(([0.0] * (max_len_last + 1)) + ([1.0] * (max_len - 1))).to(next(self.parameters()).device)
+        token_tensor = torch.Tensor(([0.0] + [0.0] + ([1.0] * (max_len)))).to(next(self.parameters()).device)
         #  token_tensor = torch.Tensor(([0.0] + [0.0] + [0.0] + ([1.0] * (max_len - 2)))).to(next(self.parameters()).device)
         segment_encoding_tensor = self.segment_embedding(token_tensor.long())
         # a = self.segment_embedding(torch.Tensor([1.0]))
@@ -579,22 +580,24 @@ class IronyClassifier(nn.Module):
 
         # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         # print(self.word_embedding.state_dict()['weight'].shape)
-        #  self.word_embedding = self.load_word_embedding(trainable=True)
-        self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
+        self.word_embedding = self.load_word_embedding(trainable=True)
+        #  self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
         self.segment_encoding = SegmentEncoding(d_model=d_model)
 
         # encoder definition
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
-                                                   dropout=dropout_p, activation='gelu')
-        # encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads, d_feedforward=n_hid,
-          #                                             dropout_p=dropout_p, activation='gelu')
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
-        # self.transformer_encoder = CustomTransformerEncoder(encoder_layer=encoder_layer, n_layers=n_layers)
+        dropout_p = 0.6     # TODO: Remove.
+        # encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
+          #                                          dropout=dropout_p, activation='gelu')
+        encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads, d_feedforward=n_hid, dropout_p=dropout_p, activation='gelu')
+        # self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=n_layers)
+        self.transformer_encoder = CustomTransformerEncoder(encoder_layer=encoder_layer, n_layers=n_layers)
 
         self.classifier_0 = nn.Linear(in_features=(d_model), out_features=int(d_model / 2))
+        #  self.classifier_0 = nn.Linear(in_features=(d_model), out_features=1)
         self.gelu_0 = nn.GELU()
+        self.dropout_classifier_0 = nn.Dropout(p=0.6)
         #  self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=2)
         self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=1)
         self.sigmoid = nn.Sigmoid()
@@ -642,7 +645,8 @@ class IronyClassifier(nn.Module):
             # src_mask.append([True] + ([False] * current_len) + ([True] * (max_len - current_len)) + ([False] * (last_current_len)) + ([True] * (max_len_last - (last_current_len))))
             # src_mask.append(([False] * last_current_len) + ([True] * (max_len_last - last_current_len)) + [False] + ([False] * (current_len)) + ([True] * (max_len - (last_current_len))))
             #  src_mask.append([True] + ([False] * (last_current_len - 1)) + ([True] * (max_len_last - last_current_len)) + [True] + ([False] * ((current_len - 3))) + [True] + ([True] * ((max_len) - ((current_len)))))
-            src_mask.append([False] + ([False] * (last_current_len - 1)) + ([True] * (max_len_last - last_current_len)) + [False] + ([False] * ((current_len - 2))) + [False] + ([True] * ((max_len) - ((current_len)))))
+            #   src_mask.append([False] + ([False] * (last_current_len - 1)) + ([True] * (max_len_last - last_current_len)) + [False] + ([False] * ((current_len - 2))) + [False] + ([True] * ((max_len) - ((current_len)))))
+            src_mask.append([False] + [False] + [False] + ([False] * ((current_len - 2))) + [False] + ([True] * ((max_len) - ((current_len)))))
             #  src_mask.append([False] + [False] + [False] + ([False] * ((current_len - 3))) + ([True] * ((max_len) - ((current_len)))) + [False])
             # src_mask.append(([False] * (last_current_len)) + ([True] * (max_len_last - (last_current_len))) + [False] + ([False] * current_len) + ([True] * (max_len - current_len)))
             # src_mask.append([False] + [False] + ([False] * current_len) + ([True] * (max_len - current_len)))
@@ -684,6 +688,7 @@ class IronyClassifier(nn.Module):
         # print('src: ', src)
 
         #  src = self.word_embedding(src.long()) * math.sqrt(self.d_model)
+        #  print(src)
         src = self.word_embedding(src.long())
         #  print(src.shape)
 
@@ -693,8 +698,8 @@ class IronyClassifier(nn.Module):
         # print(src.shape)
 
         if first and chain_training:       # TODO: Only for training.
-            # print(src.shape)
-            # return None, word_embedding, None, None
+            #  print(src.shape)
+            #  return None, word_embedding, None, None
             return None, word_embedding
 
         # print(context_tensor.shape)
@@ -702,14 +707,16 @@ class IronyClassifier(nn.Module):
         # context_tensor = self.context_fc_0(context_tensor.squeeze(0))
 
         # print(context_tensor.shape)
-        """if not first:
+        if not first:
             # print('Not first.')
+            cls = last_word_embedding[0]
+            last_word_embedding = last_word_embedding[1:]
             context_tensor = self.context_embedding(word_embedding=last_word_embedding, utterance_lengths=last_utterance_lens)
         else:
-            context_tensor = self.generate_context().to(next(self.parameters()).device)"""
+            context_tensor = self.generate_context().to(next(self.parameters()).device)
 
         # print('Context Tensor Ready.')
-        context_tensor = last_word_embedding
+        #  context_tensor = last_word_embedding
         # print(context_tensor.shape)
         # print(self.generate_context().shape)
         # context_tensor = context_tensor.repeat((src.shape[0], 1, 1))    # 'unsqueeze' context tensor at dimension 0 with sequence length as size
@@ -725,6 +732,7 @@ class IronyClassifier(nn.Module):
         # src = torch.cat((last_word_embedding, torch.zeros(1, 200, 200).to(torch.device('cuda')), src), dim=0)
         # src = torch.cat((context_tensor.unsqueeze(0), torch.zeros(1, 75, 200).to(torch.device('cuda')), src), dim=0)
         # src = torch.cat((context_tensor.unsqueeze(0), torch.zeros(1, self.batch_size, 300).to(torch.device('cuda')), src), dim=0)
+        #  print(cls.shape)
         #  print(context_tensor.shape)
         #  print(src.shape)
         # print(src[1:].shape)
@@ -739,7 +747,8 @@ class IronyClassifier(nn.Module):
         #  src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), src_0), dim=0)
         # src = torch.cat((src[0].unsqueeze(0), context_tensor, torch.zeros(1, 30, 300).to(next(self.parameters()).device), src_0), dim=0)
         #  src = torch.cat((src[0].unsqueeze(0), context_tensor, src_0), dim=0)
-        src = torch.cat((context_tensor, src), dim=0)
+        #  src = torch.cat((context_tensor, src), dim=0)
+        src = torch.cat((cls.unsqueeze(0), context_tensor.unsqueeze(0), src), dim=0)
         # src[1:] = self.positional_encoder(src[1:])
         src = self.positional_encoder(src)
         # print(src.shape)
@@ -763,12 +772,14 @@ class IronyClassifier(nn.Module):
 
         # src_mask = None
 
-        #  out, attn_weights_list = self.transformer_encoder(src, src_key_padding_mask=src_mask)
-        out = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        out, attn_weights_list = self.transformer_encoder(src, src_key_padding_mask=src_mask)
+        #  out = self.transformer_encoder(src, src_key_padding_mask=src_mask)
         # print(out.shape)
         # out = self.classifier(out[max(last_utterance_lens)])
         # out = self.classifier_0(out[0])
-        out = self.classifier_1(self.gelu_0(self.classifier_0(out[0])))
+        out = self.classifier_1(self.dropout_classifier_0(self.gelu_0(self.classifier_0(out[0]))))
+        #  print('RIP.')
+        #  out = self.classifier_0(out[0])
         # out = self.sigmoid(out)
 
         # new_context_tensor = self.context_embedding(word_embedding=word_embedding, utterance_lengths=utterance_lens)
@@ -776,9 +787,9 @@ class IronyClassifier(nn.Module):
 
         # print('attn_weights_list[0].shape: ', attn_weights_list[0].shape)
 
-        # return out, new_context_tensor, attn_weights_list
-        # print(src)
-        # print(word_embedding)
-        # print('Lol.')
-        # return out, word_embedding, attn_weights_list, context_tensor
+        #  return out, new_context_tensor, attn_weights_list
+        #  print(src)
+        #  print(word_embedding)
+        #  print('Lol.')
+        #  return out, word_embedding, attn_weights_list, context_tensor
         return out, word_embedding

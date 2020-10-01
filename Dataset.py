@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import nlpaug.augmenter.word as naw
+from nltk import bigrams
 
 import json
 import os
@@ -243,6 +244,9 @@ class IronyClassificationDataset:
         with open(os.path.join(root, 'glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
             vocabulary_dict = json.load(vocabulary_file)
         self.vocabulary_dict = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict['100003'] = 'sep'
+        self.vocabulary_dict['100001'] = 'cls'
+        self.vocabulary_dict['100002'] = 'pad'
         self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict.items()}
         self.vocabulary_dict['ukw'] = '100000'
 
@@ -347,7 +351,7 @@ class SARC_2_0_IronyClassificationDataset:
             self.comments_json = json.load(comments_json_file)
 
         if mode == 'train':
-            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-balanced.csv'), names=['data'], encoding='utf-8')
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-unbalanced-adjusted.csv'), names=['data'], encoding='utf-8')
         else:
             self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced.csv'), names=['data'], encoding='utf-8')
 
@@ -442,9 +446,9 @@ class SARC_2_0_IronyClassificationDataset:
 
         class_ratio = (self.n_sarcastic / self.n_current_samples)
         try:
-            if class_ratio <= 0.5:
+            if class_ratio < 0.4:
                 response_index = labels.index('1')
-            elif class_ratio > 0.5:
+            elif class_ratio > 0.6:
                 response_index = labels.index('0')
         except ValueError:
             response_index = rnd.randint(0, (len(response_ids) - 1))
@@ -500,9 +504,9 @@ class SARC_2_0_Dataset:
             self.comments_json = json.load(comments_json_file)
 
         if mode == 'train':
-            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-balanced-adjusted.csv'), encoding='utf-8')
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-unbalanced-adjusted.csv'), encoding='utf-8')
         else:
-            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced.csv'), names=['data'], encoding='utf-8')
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced-adjusted.csv'), names=['data'], encoding='utf-8')
 
         # ==== Load Vocabulary Data ====
 
@@ -537,6 +541,7 @@ class SARC_2_0_Dataset:
                 indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
         if not first:
             indices.append(100003)
+        #  print(indices)
 
         """try:
             unkown_words_frequency = (num_unknown_words / len(utterance.split()))
@@ -545,6 +550,122 @@ class SARC_2_0_Dataset:
 
         #  return indices, unkown_words_frequency
         return indices
+
+    def __getitem__(self, index):
+        #  print('Hi.')
+        #  data = self.df.loc[[index]]['data']
+        #  print(self.df)
+        #  data = self.df.iloc[index].item()
+        data = self.df.loc[index]
+        #  print(data)
+        #  print(data['data'])
+        #  print(data.columns)
+        #  print(data['parent_ids'])
+        #  print(data['response_ids'])
+        #  print(data['labels'])
+
+        parent_id = data['parent_ids']
+        response_id = data['response_ids']
+        label = int(data['labels'])
+        #  print(label)
+
+        parent_utterance = self.comments_json[parent_id][0].lower()
+        #  print(parent_utterance)
+        parent_utterance = self.text_to_indices(utterance=parent_utterance, first=True)
+        parent_utterance = torch.Tensor(parent_utterance)
+        parent_utterance_len = parent_utterance.shape[0]
+        response_utterance = self.comments_json[response_id][0].lower()
+        #  print(response_utterance)
+        response_utterance = self.text_to_indices(utterance=response_utterance, first=False)
+        response_utterance = torch.Tensor(response_utterance)
+        response_utterance_len = response_utterance.shape[0]
+
+        return response_utterance, response_utterance_len, parent_utterance, parent_utterance_len, label
+
+    def __len__(self):
+        return len(self.df)
+
+
+class SARC_2_0_Dataset_Bigram:
+    def __init__(self, mode, top_k=1.0e5, root='data/irony_data'):
+        self.mode = mode
+
+        # ==== Load Training Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/adjusted-comments.json'), 'r') as comments_json_file:
+            self.comments_json = json.load(comments_json_file)
+
+        if mode == 'train':
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-balanced-adjusted.csv'), encoding='utf-8')
+        else:
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced.csv'), names=['data'], encoding='utf-8')
+
+        # ==== Load Vocabulary Data ====
+
+        with open(os.path.join(root, 'SARC_2.0/glove_adjusted_vocabulary.json'), 'r') as vocabulary_file:
+            vocabulary_dict = json.load(vocabulary_file)
+        self.vocabulary_dict_indices = dict(list(vocabulary_dict.items())[:int(top_k)])
+        self.vocabulary_dict_indices['400000'] = 'ukw'
+        self.vocabulary_dict_indices['400003'] = 'sep'
+        self.vocabulary_dict_indices['400001'] = 'cls'
+        self.vocabulary_dict_indices['400002'] = 'pad'
+        self.vocabulary_dict = {v: k for k, v in self.vocabulary_dict_indices.items()}
+
+    def text_to_indices(self, utterance, first):
+        # ==== bigrams ====
+        bigram_list = list(bigrams(utterance.split()))
+
+        #  print(utterance)
+        if first:
+            indices = [400001]       # '<cls>' token
+        else:
+            indices = []
+        if not first:
+            indices.append(400003)
+
+        for bigram in bigram_list:
+            bigram = list(bigram)
+            bigram_string = ' '.join(bigram)
+            try:
+                indices.append(int(self.vocabulary_dict[bigram_string]))
+            except KeyError:        # bigram not in vocabulary --> try to get unigram token from vocabulary
+                for unigram in bigram:
+                    try:
+                        indices.append(int(self.vocabulary_dict[unigram]))
+                    except KeyError:        # unknown word --> append 'ukw' token
+                        indices.append(int(self.vocabulary_dict['ukw']))
+
+        """#  num_unknown_words = 1.0e-9
+        for word in utterance.split():
+            # print(word)
+            # TODO
+            try:
+                #  indices.append(int(self.vocabulary_dict[rnd.choice(list(self.vocabulary_dict.keys()))]))
+                indices.append(int(self.vocabulary_dict[word]))
+            except KeyError:
+                #  num_unknown_words += 1
+                #  print('Hi.')
+                #  print(word)
+                indices.append(int(self.vocabulary_dict['ukw']))        # unknown word"""
+        if not first:
+            indices.append(400003)
+
+        """try:
+            unkown_words_frequency = (num_unknown_words / len(utterance.split()))
+        except ZeroDivisionError:
+            unkown_words_frequency = 1.0"""
+
+        #  return indices, unkown_words_frequency
+        return indices
+
+    def indices_to_text(self, indices):
+        assert type(indices) == torch.Tensor, f"'indices' (type: {type(indices)}) should be of type 'torch.Tensor'."
+        indices = indices.tolist()
+        utterance = []
+        for index in indices:
+            utterance.append(self.vocabulary_dict_indices[str(int(index))])
+
+        return ' '.join(utterance)
 
     def __getitem__(self, index):
         #  data = self.df.loc[[index]]['data']
@@ -653,7 +774,23 @@ x = SARC_2_0_Dataset(mode='train', top_k=1.0e5, root='data/irony_data')
 
 for i in range(10):
     y = rnd.randint(0, 100000)
-    _, _, _, _, z, _ = x.__getitem__(y)
-    print(z)
-_, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
+    #  _, _, _, _, z, _ = x.__getitem__(y)
+    _ = x.__getitem__(y)
+    #  print(z)
+#  _, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
+#  print(z)"""
+
+"""import time
+
+
+x = SARC_2_0_Dataset_Bigram(mode='train', top_k=4.0e5, root='data/irony_data')
+
+a = time.time()
+y, _, _, _, _ = x.__getitem__(0)
+print(time.time() - a)
+
+print(y)
+
+z = x.indices_to_text(indices=y)
+
 print(z)"""

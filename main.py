@@ -10,6 +10,8 @@ from PyQt5.QtGui import *
 import threading
 from queue import Queue
 import numpy as np
+import torch
+import torchaudio
 
 import sys
 import matplotlib.pyplot as plt
@@ -19,8 +21,12 @@ from audio_streaming import audio_streaming
 
 
 class Window(QWidget):
-    def __init__(self, screen_resolution, w_f, h_f):
+    def __init__(self, screen_resolution, w_f, h_f, speech_model_file_path):
         super().__init__()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.audio_transforms = torchaudio.transforms.MelSpectrogram()
+        self.speech_model = torch.load(f=speech_model_file_path, map_location=self.device)
+
         self.width = int(screen_resolution.width() * w_f)
         self.height = int(screen_resolution.height() * h_f)
 
@@ -43,12 +49,16 @@ class Window(QWidget):
         audio_streaming_thread = threading.Thread(target=audio_streaming, args=(output_queue, ))
         audio_streaming_thread.start()
         while audio_streaming_thread.is_alive():
-            # print(output_queue.get())
-            """y = output_queue.get()
+            """#  print(output_queue.get())
+            y = output_queue.get()
             x = np.arange(0, len(y))
             fig, ax = plt.subplots()
             line, = ax.plot(x, y)
             plt.show()"""
+            spectrogram = self.audio_transforms(torch.Tensor(output_queue.get())).transpose(1, 0).to(device)
+            input_len = int(spectrogram.shape[0] / 2).to(self.device)
+            output = self.speech_model(spectrogram)
+            print(spectrogram)
             time.sleep(5)
             print(audio_streaming_thread.is_alive())
         print('Thread not running anymore.')
