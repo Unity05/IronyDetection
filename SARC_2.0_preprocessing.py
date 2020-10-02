@@ -148,7 +148,8 @@ def generate_bigram_vocabulary(root='data'):
 
 
 def get_label_ratio(root='data'):
-    df = pd.read_csv(os.path.join(root, 'irony_data/SARC_2.0/train-unbalanced-adjusted.csv'))
+    #  df = pd.read_csv(os.path.join(root, 'irony_data/SARC_2.0/train-unbalanced-adjusted.csv'))
+    df = pd.read_csv(os.path.join(root, 'irony_data/SARC_2.0/test-balanced-adjusted.csv'))
     ratio = (
         len(df.loc[df['labels'] == 0]) / len(df.loc[df['labels'] == 1])
     )

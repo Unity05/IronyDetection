@@ -506,7 +506,8 @@ class SARC_2_0_Dataset:
         if mode == 'train':
             self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/train-unbalanced-adjusted.csv'), encoding='utf-8')
         else:
-            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced-adjusted.csv'), names=['data'], encoding='utf-8')
+            #  self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced-adjusted.csv'), names=['data'], encoding='utf-8')
+            self.df = pd.read_csv(os.path.join(root, 'SARC_2.0/test-balanced-adjusted.csv'), encoding='utf-8')
 
         # ==== Load Vocabulary Data ====
 
@@ -563,6 +564,8 @@ class SARC_2_0_Dataset:
         #  print(data['parent_ids'])
         #  print(data['response_ids'])
         #  print(data['labels'])
+
+        #  print(data)
 
         parent_id = data['parent_ids']
         response_id = data['response_ids']
@@ -767,18 +770,18 @@ augmented_data = aug.augment(data=string)
 
 print(augmented_data)"""
 
-"""#  x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
-x = SARC_2_0_Dataset(mode='train', top_k=1.0e5, root='data/irony_data')
+#  x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
+x = SARC_2_0_Dataset(mode='valid', top_k=1.0e5, root='data/irony_data')
 
 # print(x.__getitem__(0))
 
 for i in range(10):
-    y = rnd.randint(0, 100000)
+    y = rnd.randint(0, 10000)
     #  _, _, _, _, z, _ = x.__getitem__(y)
     _ = x.__getitem__(y)
     #  print(z)
 #  _, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
-#  print(z)"""
+#  print(z)
 
 """import time
 

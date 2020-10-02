@@ -37,13 +37,14 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     x = attn_weights_list[0].shape[-1]
     n_layers = len(attn_weights_list)
     # print(n_layers)
-    n_heads = 6     # change later TODO
+    n_heads = 10     # change later TODO
 
     fig, axes = plt.subplots(n_layers, n_heads)
     # print(axes)
     # print(attn_weights_list[1])
 
     imgs = []
+    attn_max_list = []
     for i in range(n_layers):
         for j in range(n_heads):
             # print(f'i: {i} | j: {j}')
@@ -54,6 +55,8 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
             # print(i)
             # print(axes[i, j])
             # print('shape_test: ', attn_weights_list[((i))][batch_i][j].shape)
+            # print()
+            attn_max_list.append([np.argmax(attn_weights_list[((i))][batch_i][j][0][3:])])
             imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][0], axis=0), cmap=cmap))
             # imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1][2:], axis=0), cmap=cmap))
             # axes[i, j].label_outer()
@@ -64,6 +67,8 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
                 labels=['context', 'class', 'because', 'throw', 'money', 'at', 'the', 'problem', 'have', 'always', 'work', 'in', 'the', 'past'],
                 rotation='vertical'
             )
+
+    print(attn_max_list)
 
     norm = colors.Normalize(vmin=0.0, vmax=1.0)
 
@@ -163,5 +168,5 @@ x = [
 # plot_attn(attn_weights_list=x, batch_i=0)
 """test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
      distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
-test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_36.10.pth',
+test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_37.14.pth',
      distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)

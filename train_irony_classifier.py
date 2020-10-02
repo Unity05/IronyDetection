@@ -275,8 +275,8 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
     for i, data in enumerate(valid_dataloader):
         try:
-            #  utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
-            utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data
+            utterance, utterance_len, parent_utterance, parent_utterance_len, target = data        # TODO: Class ratio only for 'SARC_2.0' dataset.
+            #  utterance, utterance_len, parent_utterance, parent_utterance_len, target, class_ratio = data
 
             chain_training = (utterance[0] != None)
 
@@ -310,7 +310,8 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
                   #                                 last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
                 output, word_embedding = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
                                                last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-                #  los = distance(output.squeeze(1), targets[1].to(device))
+                los = distance(output.squeeze(1), targets[1].to(device))
+                loss = los
                 """print(output.shape)
                 print(output)
                 output = torch.nn.LogSoftmax()(output)
@@ -330,12 +331,14 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
                 losses.append(los.item())
                 #  print(los.item())"""
 
+                #  print(output)
+
                 correct += (torch.where(output.squeeze(1) > 0.0, torch.Tensor([1.0]).to(torch.device('cuda')), torch.Tensor([0.0]).to(torch.device('cuda'))) == targets[1]).sum().item()
                 total += output.shape[0]
 
             # ==== log ====
-            """if loss.item() != 0:
-                average_meter.step(loss=loss.item())"""
+            if loss.item() != 0:
+                average_meter.step(loss=loss.item())
         #  except RuntimeError:
         except:
             warnings.warn(message='CUDA OOM. Skipping current iteration. (I know that is not a good style - but meh.)',
@@ -345,6 +348,8 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
 
     average_loss = average_meter.average()
     valid_losses.append(average_loss)
+    print(correct)
+    print(total)
     print(f'(Validation) Loss: {average_loss} | Epoch: {epoch} | Accuracy: {(correct / total)}')
 
 
@@ -357,14 +362,14 @@ def main(version):
         'vocabulary_size': 1.0e5,
         'batch_size': 30,
 
-        'd_model': 300,
-        'd_context': 300,
+        'd_model': 500,
+        'd_context': 500,
         'n_heads': 10,
         'n_hids': 1024,
         'n_layers': 12,
-        'dropout_p': 0.6,
+        'dropout_p': 0.5,
 
-        'max_norm': 0.25,
+        'max_norm': 0.5,
         'i_lr': 1.0e-5,
         'n_batches_warmup': 5000
     }
@@ -423,10 +428,10 @@ def main(version):
     # set up optimizer, loss function and learning rate scheduler
 
     params = [p for p in model.parameters() if p.requires_grad]
-    optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=2.5e-5, amsgrad=False)
+    optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5, amsgrad=False)
     #  optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
     #  distance = nn.BCELoss()
-    #  distance_weights = torch.Tensor([36.123110985425875]).to(device)
+    #  distance_weights = torch.Tensor([1.0001]).to(device)
     #  distance = nn.BCEWithLogitsLoss(pos_weight=distance_weights)
     distance = nn.BCEWithLogitsLoss()
     #  distance = nn.CrossEntropyLoss()
@@ -438,7 +443,7 @@ def main(version):
 
 
     if CONTINUE_TRAINING is True:
-        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_35.8.pth',
+        model, optim = load_checkpoint(checkpoint_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_37.10.pth',
                                        model=model, optim=optim)
         for param_group in optim.param_groups:
             param_group['lr'] = 1.0e-5
@@ -476,4 +481,4 @@ def main(version):
 
 
 if __name__ == '__main__':
-    main(version=37)
+    main(version=38)

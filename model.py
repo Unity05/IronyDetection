@@ -532,7 +532,7 @@ class ContextModel(nn.Module):
         self.weight_fc_2 = nn.Linear(in_features=int(d_model / 2), out_features=1)
         self.dropout_2 = nn.Dropout(p=0.25)
 
-        self.bi_gru = nn.GRU(input_size=300, hidden_size=150, num_layers=1, bias=True, batch_first=False, dropout=0.25, bidirectional=True)
+        self.bi_gru = nn.GRU(input_size=300, hidden_size=150, num_layers=1, bias=True, batch_first=False, dropout=0.5, bidirectional=True)
 
         self.weight_sigmoid = nn.Sigmoid()
         self.weight_softmax = nn.Softmax()
@@ -580,14 +580,14 @@ class IronyClassifier(nn.Module):
 
         # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         # print(self.word_embedding.state_dict()['weight'].shape)
-        self.word_embedding = self.load_word_embedding(trainable=True)
-        #  self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
+        #  self.word_embedding = self.load_word_embedding(trainable=True)
+        self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
         self.segment_encoding = SegmentEncoding(d_model=d_model)
 
         # encoder definition
-        dropout_p = 0.6     # TODO: Remove.
+        dropout_p = 0.5     # TODO: Remove.
         # encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=n_hid,
           #                                          dropout=dropout_p, activation='gelu')
         encoder_layer = CustomTransformerEncoderLayer(d_model=(d_model), n_heads=n_heads, d_feedforward=n_hid, dropout_p=dropout_p, activation='gelu')
@@ -597,7 +597,7 @@ class IronyClassifier(nn.Module):
         self.classifier_0 = nn.Linear(in_features=(d_model), out_features=int(d_model / 2))
         #  self.classifier_0 = nn.Linear(in_features=(d_model), out_features=1)
         self.gelu_0 = nn.GELU()
-        self.dropout_classifier_0 = nn.Dropout(p=0.6)
+        self.dropout_classifier_0 = nn.Dropout(p=0.5)
         #  self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=2)
         self.classifier_1 = nn.Linear(in_features=int(d_model / 2), out_features=1)
         self.sigmoid = nn.Sigmoid()
@@ -699,8 +699,8 @@ class IronyClassifier(nn.Module):
 
         if first and chain_training:       # TODO: Only for training.
             #  print(src.shape)
-            #  return None, word_embedding, None, None
-            return None, word_embedding
+            return None, word_embedding, None, None
+            #  return None, word_embedding
 
         # print(context_tensor.shape)
         # print(context_tensor.device)
@@ -791,5 +791,5 @@ class IronyClassifier(nn.Module):
         #  print(src)
         #  print(word_embedding)
         #  print('Lol.')
-        #  return out, word_embedding, attn_weights_list, context_tensor
-        return out, word_embedding
+        return out, word_embedding, attn_weights_list, context_tensor
+        #  return out, word_embedding
