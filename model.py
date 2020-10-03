@@ -532,7 +532,7 @@ class ContextModel(nn.Module):
         self.weight_fc_2 = nn.Linear(in_features=int(d_model / 2), out_features=1)
         self.dropout_2 = nn.Dropout(p=0.25)
 
-        self.bi_gru = nn.GRU(input_size=300, hidden_size=150, num_layers=1, bias=True, batch_first=False, dropout=0.5, bidirectional=True)
+        self.bi_gru = nn.GRU(input_size=500, hidden_size=250, num_layers=1, bias=True, batch_first=False, dropout=0.5, bidirectional=True)
 
         self.weight_sigmoid = nn.Sigmoid()
         self.weight_softmax = nn.Softmax()
@@ -581,7 +581,7 @@ class IronyClassifier(nn.Module):
         # self.word_embedding = nn.Embedding(num_embeddings=int(n_tokens), embedding_dim=d_model)
         # print(self.word_embedding.state_dict()['weight'].shape)
         #  self.word_embedding = self.load_word_embedding(trainable=True)
-        self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=300)
+        self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=500)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
         self.segment_encoding = SegmentEncoding(d_model=d_model)

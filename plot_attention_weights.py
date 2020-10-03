@@ -46,6 +46,7 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     imgs = []
     attn_max_list = []
     for i in range(n_layers):
+        attn_max_list.append([])
         for j in range(n_heads):
             # print(f'i: {i} | j: {j}')
             # print(axes[0, 0])
@@ -56,7 +57,7 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
             # print(axes[i, j])
             # print('shape_test: ', attn_weights_list[((i))][batch_i][j].shape)
             # print()
-            attn_max_list.append([np.argmax(attn_weights_list[((i))][batch_i][j][0][3:])])
+            attn_max_list[i].append([np.argmax(attn_weights_list[((i))][batch_i][j][0][3:])])
             imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][0], axis=0), cmap=cmap))
             # imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1][2:], axis=0), cmap=cmap))
             # axes[i, j].label_outer()
@@ -68,7 +69,9 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
                 rotation='vertical'
             )
 
-    print(attn_max_list)
+    #  print(attn_max_list)
+    for row in attn_max_list:
+        print(row)
 
     norm = colors.Normalize(vmin=0.0, vmax=1.0)
 
@@ -88,8 +91,8 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
     model = IronyClassifier(
         batch_size=batch_size,
         n_tokens=1.0e5,
-        d_model=300,
-        d_context=300,
+        d_model=500,
+        d_context=500,
         n_heads=10,
         n_hid=1024,
         n_layers=12,
@@ -168,5 +171,5 @@ x = [
 # plot_attn(attn_weights_list=x, batch_i=0)
 """test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
      distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
-test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_37.14.pth',
+test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_38.10.pth',
      distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)
