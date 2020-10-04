@@ -1,4 +1,4 @@
-# import torchaudio
+import torchaudio
 import torch
 import torch.nn as nn
 import numpy as np
@@ -273,8 +273,13 @@ class IronyClassificationDataset:
         else:
             self.audio_transforms = torchaudio.transforms.MelSpectrogram()"""
 
-    def text_to_indices(self, utterance):
-        indices = [100001]       # '<cls>' token
+    def text_to_indices(self, utterance, first):
+        #  if first:
+        if True:
+            indices = [100001]       # '<cls>' token
+        else:
+            indices = [100003]
+        pass
         # print(len(utterance.split()))
         for word in utterance.split():
             # print(word)
@@ -284,6 +289,8 @@ class IronyClassificationDataset:
             except KeyError:
                 # print('ukw: ', word)
                 indices.append(int(self.vocabulary_dict['ukw']))        # unknown word
+        """if not first:
+            indices.append(100003)"""
 
         return indices
 
@@ -311,7 +318,7 @@ class IronyClassificationDataset:
             """if rnd.random() < 0.95 and self.mode == 'train':
             # if self.mode == 'train':
                 utterance = self.aug.augment(data=utterance)        # text augmentation (SynonymAug)"""
-            utterance = torch.Tensor(self.text_to_indices(utterance=utterance))
+            utterance = torch.Tensor(self.text_to_indices(utterance=utterance, first=False))
             utterance_len = utterance.shape[0]
 
             parent_utterance = row['parent_comment']
@@ -319,7 +326,7 @@ class IronyClassificationDataset:
             parent_utterance = parent_utterance.lower()
             """if rnd.random() < 0.75 and self.mode == 'train':
                 parent_utterance = self.aug.augment(data=parent_utterance)"""
-            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance))
+            parent_utterance = torch.Tensor(self.text_to_indices(utterance=parent_utterance, first=True))
             parent_utterance_len = parent_utterance.shape[0]
 
             # target = row['target']
@@ -770,7 +777,7 @@ augmented_data = aug.augment(data=string)
 
 print(augmented_data)"""
 
-#  x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
+"""#  x = SARC_2_0_IronyClassificationDataset(mode='train', top_k=1.0e5, root='data/irony_data')
 x = SARC_2_0_Dataset(mode='valid', top_k=1.0e5, root='data/irony_data')
 
 # print(x.__getitem__(0))
@@ -781,7 +788,7 @@ for i in range(10):
     _ = x.__getitem__(y)
     #  print(z)
 #  _, _, _, _, z, _ = x.__getitem__((x.__len__() - 1))
-#  print(z)
+#  print(z)"""
 
 """import time
 
@@ -797,3 +804,7 @@ print(y)
 z = x.indices_to_text(indices=y)
 
 print(z)"""
+
+"""x = Dataset(root='data', url='train-clean-100', mode='train', n_features=128, download=True)
+
+print(x.__getitem__(0))"""

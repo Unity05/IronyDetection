@@ -7,11 +7,12 @@ import matplotlib.pyplot as plt
 def audio_streaming(output_queue):
     CHUNK = 1024
     SAMPLE_FORMAT = pyaudio.paInt16
+    #  SAMPLE_FORMAT = pyaudio.paFloat32
     CHANNELS = 1
     RATE = 16000
 
     REQUIRED_SILENCE_LENGTH = (RATE / CHUNK) * 0.3
-    REQUIRED_SILENCE_LENGTH_FOR_SHUTDOWN = 30 * REQUIRED_SILENCE_LENGTH
+    REQUIRED_SILENCE_LENGTH_FOR_SHUTDOWN = 100 * REQUIRED_SILENCE_LENGTH
 
     p = pyaudio.PyAudio()
 
@@ -84,6 +85,6 @@ def audio_streaming(output_queue):
     """x = np.arange(0, len(all_frames))
     fig, ax = plt.subplots()
     line, = ax.plot(x, all_frames)"""
-    plt.show()
+    #  plt.show()
 
     return

@@ -38,6 +38,10 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     n_layers = len(attn_weights_list)
     # print(n_layers)
     n_heads = 10     # change later TODO
+    #  print(np.array(attn_weights_list).shape)
+    #  print(attn_weights_list.shape)
+    print(attn_weights_list[0].shape)
+    print(len(attn_weights_list))
 
     fig, axes = plt.subplots(n_layers, n_heads)
     # print(axes)
@@ -139,11 +143,16 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
                 # print(_[0].shape)
                 # print(_)"""
 
-            output, word_embedding, _, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+            #  output, word_embedding, _, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
+            output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
 
-            output, word_embedding, _, context_tensor = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+            """output, word_embedding, _, context_tensor = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
+                                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])"""
+            output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
                                                               last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
             los = distance(output.squeeze(1), targets[1].to(device))
+
+            print(utterances[1])
 
             print(output)
 

@@ -232,7 +232,7 @@ def train(model, train_dataset, train_dataloader, device, batch_size, distance, 
                 },
                     f'models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_{9}.{epoch}.pth')"""
 
-        except RuntimeError:
+        except KeyError:
         #  except KeyError:
             # print('Except.')
             # print(torch.cuda.memory_reserved())

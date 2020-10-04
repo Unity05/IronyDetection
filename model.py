@@ -680,6 +680,9 @@ class IronyClassifier(nn.Module):
         pass
 
     def forward(self, src: torch.Tensor, utterance_lens: tuple, first: bool, last_word_embedding: Optional[torch.Tensor] = torch.zeros((10, 20, 200)).to(torch.device('cuda')), last_utterance_lens: Optional[tuple] = None, chain_training: Optional[bool] = True):
+        if not self.training:
+            utterance_lens = [utterance_lens]
+            last_utterance_lens = [last_utterance_lens]
         # print('forward')
         # print('src_shape: ', src.shape)
         # get src mask
@@ -693,14 +696,27 @@ class IronyClassifier(nn.Module):
         #  print(src.shape)
 
         #  word_embedding = src[1:]
-        word_embedding = src
+        if self.training:
+        #  if True:
+            word_embedding = src
+        else:
+            #  print(src)
+            word_embedding = src[1:-1]
+            #  print(word_embedding)
+            #  print(word_embedding.shape)
+
 
         # print(src.shape)
 
         if first and chain_training:       # TODO: Only for training.
             #  print(src.shape)
-            return None, word_embedding, None, None
-            #  return None, word_embedding
+            #  return None, word_embedding, None, None
+            #  return None, word_embedding, None
+            if self.training:
+                return None, word_embedding
+            else:
+                #  return None, word_embedding[1:-1], None       # Cut of 'sep' tokens (only for inference).
+                return None, word_embedding, None
 
         # print(context_tensor.shape)
         # print(context_tensor.device)
@@ -708,9 +724,17 @@ class IronyClassifier(nn.Module):
 
         # print(context_tensor.shape)
         if not first:
-            # print('Not first.')
-            cls = last_word_embedding[0]
-            last_word_embedding = last_word_embedding[1:]
+            if self.training:
+            #  if True:
+                cls = last_word_embedding[0]
+                last_word_embedding = last_word_embedding[1:]
+            #  print('Not first.')
+            else:
+                cls = self.word_embedding(torch.LongTensor([100001]).to(next(self.parameters()).device))
+            #  print(cls)
+            #  print('Hi: ', self.word_embedding(torch.LongTensor([100001]).to(next(self.parameters()).device)))
+            #  print(last_word_embedding.shape)
+            #  exit(-1)
             context_tensor = self.context_embedding(word_embedding=last_word_embedding, utterance_lengths=last_utterance_lens)
         else:
             context_tensor = self.generate_context().to(next(self.parameters()).device)
@@ -748,13 +772,24 @@ class IronyClassifier(nn.Module):
         # src = torch.cat((src[0].unsqueeze(0), context_tensor, torch.zeros(1, 30, 300).to(next(self.parameters()).device), src_0), dim=0)
         #  src = torch.cat((src[0].unsqueeze(0), context_tensor, src_0), dim=0)
         #  src = torch.cat((context_tensor, src), dim=0)
+        #  print(cls.shape)
+        #  print(context_tensor.shape)
+        #  print(src.shape)
+        if not self.training:
+            src = src.unsqueeze(1)
+            #  pass
         src = torch.cat((cls.unsqueeze(0), context_tensor.unsqueeze(0), src), dim=0)
-        # src[1:] = self.positional_encoder(src[1:])
+        #  print(src)
+        #  src = torch.cat((cls.unsqueeze(0), context_tensor.unsqueeze(0), cls.unsqueeze(0), word_embedding.unsqueeze(1)), dim=0)
+        #  src[1:] = self.positional_encoder(src[1:])
         src = self.positional_encoder(src)
-        # print(src.shape)
+        #  print('Src: ', src.shape)
+        #  print(src)
+        #  print(cls)
         # print(self.segment_encoding(utterance_lens=utterance_lens, last_utterance_lens=last_utterance_lens).shape)
         src += self.segment_encoding(utterance_lens=utterance_lens, last_utterance_lens=last_utterance_lens).unsqueeze(1).repeat(1, self.batch_size, 1)
-        # src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), src[1:]), dim=0)
+
+      # src = torch.cat((src[0].unsqueeze(0), context_tensor.unsqueeze(0), src[1:]), dim=0)
         #  print(src.shape)
 
         # src = self.positional_encoder(src)
@@ -791,5 +826,7 @@ class IronyClassifier(nn.Module):
         #  print(src)
         #  print(word_embedding)
         #  print('Lol.')
-        return out, word_embedding, attn_weights_list, context_tensor
+        #  return out, word_embedding, attn_weights_list, context_tensor
+        #  print(attn_weights_list)
+        return out, word_embedding, attn_weights_list
         #  return out, word_embedding
