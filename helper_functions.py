@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import itertools
 
 
 class AverageMeter:
@@ -78,16 +77,7 @@ def decoder(output, dataset, label_lens=None, blank_label=28, targets=None, trai
 
     decoded_output = []
     decoded_targets = []
-    #print(output.shape)
-    #print(targets.shape)
-    #print(targets)
-    #print(output[0])
-    #print(indices)
     for batch_i, batch_output in enumerate(indices):
-        #print(batch_output)
-        #decode_output = []
-        #for _, index in enumerate(batch_output):
-            #if index != blank_label:
         print('BATCH_OUTPUT: ', batch_output)
         decoded_output.append(dataset.indices_to_text(indices=batch_output.tolist(), policy=dataset.index_word_policy))
         if not train:
@@ -96,14 +86,6 @@ def decoder(output, dataset, label_lens=None, blank_label=28, targets=None, trai
                                                            policy=dataset.index_char_policy))
 
     return decoded_output, decoded_targets
-
-
-"""def adjust_probabilities(probabilities):
-    current_char = ''
-    adjusted_probabilities = []
-    same_char_probabilities = []
-    same_word_probabilities = []
-    for i, p in enumerate(probabilities):"""
 
 
 def adjust_output(output, probabilities):
@@ -198,6 +180,3 @@ def adjust_output_train(output, targets, dataset):
     #print(len(adjusted_probabilities))
     return torch.nn.utils.rnn.pad_sequence(adjusted_probabilities), torch.stack(adjusted_targets)
     # TODO: Remove Batching
-
-"""def WER(output, targets, dataset, label_lens):
-    decoded_output, decoded_targets = decoder(output=output, targets=targets, dataset=dataset, label_lens=label_lens)"""

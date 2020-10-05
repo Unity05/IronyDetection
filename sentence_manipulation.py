@@ -176,7 +176,6 @@ class SentenceManipulator:
         #  print(replacement)
 
         if replacement == None or replacement == [None]:       # Nothing to change found. :C
-            #  print('Lol.')
             replacement = [most_likely_word]
 
         # ==== New Sentence ====
@@ -220,31 +219,12 @@ class SentenceManipulator:
                 #  print(utterance)
             except IndexError:
                 return original_utterance, False
-        #  last_utterance_indices, utterance_indices = self.text_to_indices(utterance=utterance)
+
         utterance_indices = self.text_to_indices(utterance=utterance)
-        #  print(utterance)
-        #  print(utterance_indices)
-        #  last_utterance_indices = torch.Tensor(last_utterance_indices).to(self.device)
         utterance_indices = torch.Tensor(utterance_indices).to(self.device)
-        #  last_utterance_len = last_utterance_indices.shape[0]
         utterance_len = utterance_indices.shape[0]
-        #  print(utterance_len)
 
         # ==== Forward ====
-
-        """if utterance_len == 3:
-            print('Hi.')
-            output, word_embedding, attn_weights = self.irony_regressor(src=utterance_indices, utterance_lens=utterance_len,
-                                                                        first=True)
-            self.last_word_embedding = word_embedding
-            return utterance, False     # Assumption: First utterance is never sarcastic / ironic.
-        elif utterance_len < 3:
-            return utterance, False
-        else:
-            output, word_embedding, attn_weights = self.irony_regressor(src=utterance_indices, utterance_lens=utterance_len,
-                                                                        first=False, last_word_embedding=self.last_word_embedding,
-                                                                        last_utterance_lens=self.last_word_embedding.shape[0])
-        self.last_word_embedding = word_embedding"""
 
         #  print('Last: ', self.last_word_embedding)
 
@@ -275,62 +255,7 @@ class SentenceManipulator:
         if not is_ironic:
             return original_utterance, False
 
-        #  print(attn_weights[0].shape)
-        """attn_max_list = []
-        for i in range(12):
-            for j in range(10):
-                print('i: ', i, 'j: ', j)
-                attn_max_list.append([np.argmax(attn_weights[((i))][0][j][0][3:-1].cpu().detach().numpy())])
-        for row in attn_max_list:
-            print(row)"""
         attn_vector = attn_weights[self.attn_layer][0][self.attn_head][0][3:-1]
         new_sentence = self.get_manipulated_sentence(sentence=utterance, original_utterance=original_utterance, distribution=attn_vector.cpu().detach().numpy())
 
         return new_sentence, True
-
-
-
-#   get_pos_tag(word=None)
-
-#  word = 'I have nothing'
-#  word = 'I will do it'
-#  word = 'important'
-#  word = 'has'
-"""sentence = 'i really love this'
-distribution = np.array([0.1, 0.3, 0.5, 0.1])
-
-new_sentence = get_manipulated_sentence(sentence=sentence, distribution=distribution)
-print(new_sentence)"""
-
-"""a = time.time()
-print(get_pos_tag(word=word))
-print(time.time() - a)"""
-
-"""cp = load_parser('grammars/book_grammars/feat0.fcfg')
-
-print(cp.nbest_parse([word]))"""
-
-"""spacy_language_model = spacy.load('en_core_web_sm')
-doc = spacy_language_model(word)
-print(doc)
-print(doc[1].dep_)"""
-
-
-"""# print(pos_tag(word.split()))
-print(pos_tag([word]))
-
-print(help.upenn_tagset(pos_tag(word.split())))
-
-print(help.upenn_tagset('VBZ'))
-
-print(help.upenn_tagset('AUX'))"""
-
-
-# antonym = wordnet.lemmas(word)[0].antonyms()
-
-"""antonym = get_first_antonym(word=word)
-
-print(antonym)
-
-print(synonyms)
-print(antonyms)"""

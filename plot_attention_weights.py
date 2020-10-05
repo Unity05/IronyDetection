@@ -52,19 +52,9 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     for i in range(n_layers):
         attn_max_list.append([])
         for j in range(n_heads):
-            # print(f'i: {i} | j: {j}')
-            # print(axes[0, 0])
-            # print(((i * n_layers) + (j + 1)))
-            # imgs.append(axes[i, j].imshow(attn_weights_list[((i * n_layers) + j)], cmap=cmap))
-            # print(j)
-            # print(i)
-            # print(axes[i, j])
-            # print('shape_test: ', attn_weights_list[((i))][batch_i][j].shape)
-            # print()
             attn_max_list[i].append([np.argmax(attn_weights_list[((i))][batch_i][j][0][3:])])
             imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][0], axis=0), cmap=cmap))
             # imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1][2:], axis=0), cmap=cmap))
-            # axes[i, j].label_outer()
             axes[i, j].label_outer()
 
             plt.xticks(
@@ -129,19 +119,6 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
             targets = [torch.zeros((batch_size), dtype=torch.float32), target]
 
             # ==== forward ====
-            """context_tensor = model.generate_context().to(device)
-            loss = 0
-            for i_2 in range(2):
-                output, context_tensor, _ = model(src=utterances[i_2], utterance_lens=utterance_lens[i_2],
-                                                  context_tensor=context_tensor)
-                print(f'Prediction: {output.squeeze(1)}  Target: {targets[i_2]}')
-
-                loss += distance(output.squeeze(1), targets[i_2].to(device))
-
-                print('Loss: ', distance(output.squeeze(1), targets[i_2].to(device)))
-
-                # print(_[0].shape)
-                # print(_)"""
 
             #  output, word_embedding, _, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
             output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
@@ -152,30 +129,18 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
                                                               last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
             los = distance(output.squeeze(1), targets[1].to(device))
 
-            print(utterances[1])
+            """print(utterances[1])
 
             print(output)
 
             print(los)
 
-            print(targets[1])
+            print(targets[1])"""
 
             #  lol(word_embedding=context_tensor)
 
             plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
 
-x = [
-    torch.Tensor([
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-        [0.7, 0.8, 0.9]
-    ]),
-    torch.Tensor([
-        [0.9, 0.8, 0.7],
-        [0.6, 0.5, 0.4],
-        [0.3, 0.2, 0.1]
-    ])
-]
 
 # plot_attn(attn_weights_list=x, batch_i=0)
 """test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
