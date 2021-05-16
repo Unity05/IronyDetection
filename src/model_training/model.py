@@ -6,10 +6,8 @@ import numpy as np
 
 import math
 import warnings
-from typing import Optional, Any
+from typing import Optional
 import torch.multiprocessing as mp
-
-import time
 
 
 """
@@ -138,11 +136,7 @@ class SpeechModel(nn.Module):
             nn.Linear(in_features=bi_gru_dim, out_features=n_classes)
         )
 
-        # Decoder
-        self.decoder = FinalDecoder(input_size=1, hidden_size=1024, output_size=9897, device=device)
-
-
-        # Audio Embedding model for irony classificaton model
+        # Audio Embedding model for irony classificaton model [NOT USED due to lack of audio data]
         self.audio_embedding = AudioEmbedding(n_features=n_features, dropout_p=dropout_p,
                                               d_audio_embedding=d_audio_embedding)
 
@@ -151,19 +145,17 @@ class SpeechModel(nn.Module):
 
         return x
 
-    def forward(self, x, this_model_train):
+    def forward(self, x, this_model_train=True):
 
         x = self.init_conv2d(x)
         x = self.residual_cnn_general(x)
 
         # Start parallel audio processing for following irony classification
-        #self.audio_embedding(x, mp.Queue())
-        #print('Hi.')
-        #audio_embedding_input = x.data
-        #print('is_leaf: ', audio_embedding_input.is_leaf)
-        #print('audio_embedding_input: ', audio_embedding_input)
-        #print('x.data: ', x.data)
         if not self.training and not this_model_train:
+            # Audio Embedding has not been finished implementing and has not been tested
+            # due to a lack of respective audio data.
+            raise NotImplementedError
+
             mp.set_start_method('spawn')
 
             audio_embedding_return = mp.Queue()
@@ -171,11 +163,7 @@ class SpeechModel(nn.Module):
                 target=self.audio_embedding,
                 args=(x.clone(), audio_embedding_return)
             )
-            #print('Okay.')
             audio_embedding_process.start()
-            #self.do_audio_embedding(x=x.copy())
-            #print('Finished.')
-            #exit(-1)
         else:
             conv_output_for_audio_embedding = x.clone()
 
@@ -190,7 +178,9 @@ class SpeechModel(nn.Module):
         if this_model_train is True:        # for seperatly training the ASR model
             return x
 
-        x = nn.Softmax(dim=2)(x) * 1.0e3        # Why? Comment out?
+        # Audio Embedding has not been finished implementing and has not been tested
+        # due to a lack of respective audio data.
+        raise NotImplementedError
 
         if not self.training:
             # Adjust audio embeddings with ASR - classifier outputs
@@ -206,99 +196,11 @@ class SpeechModel(nn.Module):
             adjusted_audio_embedding = self.audio_embedding.audio_embedding_adjustments(
                 audio_embeddings=audio_embedding_return, asr_classifications=x)
 
-        output, original_word_lens = self.decoder(x=x)
-
         if not self.training:
             # Get adjusted audio embeddings
             adjusted_audio_embedding = adjusted_audio_embedding_return.get()
 
-        if self.training:
-            return output, adjusted_audio_embedding
-        else:
-            return output, adjusted_audio_embedding, original_word_lens
-
-
-class FinalDecoder(nn.Module):
-    """
-    Matches letter wise output from SpeechModel with the corresponding word index from vocabulary.
-
-    Structure:
-    input_words (letter wise) -> feed forward -> word index
-    """
-
-    def __init__(self, input_size, hidden_size, output_size, device):
-        super(FinalDecoder, self).__init__()
-
-        self.device = device
-
-        self.hidden_size = hidden_size
-
-        self.gru = nn.GRU(input_size=input_size, hidden_size=hidden_size, batch_first=False)
-        self.fc_0 = nn.Linear(in_features=hidden_size, out_features=(hidden_size * 2))
-        self.fc_1 = nn.Linear(in_features=(hidden_size * 2), out_features=int(output_size / 2))
-        self.fc_2 = nn.Linear(in_features=int(output_size / 2), out_features=output_size)
-        self.relu = nn.ReLU()
-        self.elu = nn.ELU()
-        self.tanh = nn.Tanh()
-        self.log_softmax = nn.LogSoftmax(dim=2)
-        self.softmax = nn.Softmax(dim=2)
-
-    def data_preprocessing(self, x):
-        # split letter classifier output in word tensors
-        word_tensors = []
-        original_word_lens = []
-        start_index = 0
-        previous_batch_i = 0
-
-        word_info_tuples = torch.cat(((x.argmax(dim=2) == 1).nonzero(), torch.Tensor(
-            [[batch_i.item(), (x.shape[1] - 1)] for batch_i in torch.unique((x.argmax(dim=2) == 1)[:, 0])]).long().to(
-            self.device)))
-
-        for word_index in word_info_tuples:
-            batch_i, end_char_i = word_index
-            if end_char_i == start_index:
-                continue
-            if batch_i != previous_batch_i:
-                start_index = 0
-                previous_batch_i = batch_i
-
-            word_tensor = torch.argmax(x[batch_i.item()][start_index: (end_char_i.item() + 1)], dim=1, keepdim=True)
-            adjusted_words = []
-            prev_i = 1
-            for char_i in word_tensor[:-1]:
-                char_i = char_i.item()
-                if char_i is not prev_i:
-                    if char_i is 28:
-                        prev_i = 28
-                    else:
-                        adjusted_words.append(char_i)
-                        prev_i = char_i
-            word_tensor = torch.Tensor(adjusted_words).unsqueeze(1)
-            word_tensors.append(word_tensor)
-            original_word_lens.append(word_tensor.shape[0])
-            start_index = end_char_i.item() + 1
-
-        if len(word_tensors) == 0:
-            word_tensors = [y for y in x]
-
-        word_tensors = torch.nn.utils.rnn.pad_sequence(sequences=word_tensors, padding_value=0.0,
-                                                       batch_first=False).to(self.device)  # (char, n_words, n_classes)
-
-        return word_tensors, original_word_lens
-
-    def forward(self, x):
-        if not self.training:
-            x, original_word_lens = self.data_preprocessing(x=x)        # dtype int to float
-        output, hidden = self.gru(x)
-        output = self.elu(self.fc_0(output))
-        output = self.elu(self.fc_1(output))
-        output = self.fc_2(output)
-        output = self.log_softmax(output)
-
-        if self.training:
-            return output
-        else:
-            return output, original_word_lens
+        return adjusted_audio_embedding
 
 
 """
@@ -324,9 +226,6 @@ class AudioEmbedding(nn.Module):
         self.dropout = nn.Dropout(p=dropout_p)
 
     def forward(self, x: torch.Tensor, audio_embedding_return=None):
-        #print(self.device)
-        #print('is_cuda: ', next(self.parameters()).is_cuda)
-        #print(x.shape)
         x = self.conv_block(x)
 
         sizes = x.size()
@@ -389,12 +288,9 @@ class SegmentEncoding(nn.Module):
 
     def forward(self, utterance_lens: tuple, last_utterance_lens: tuple) -> torch.Tensor:
         max_len = max(utterance_lens)
-        max_len_last = max(last_utterance_lens)
-        #  token_tensor = torch.Tensor(([0.0] * (max_len_last + 1)) + ([1.0] * (max_len - 1))).to(next(self.parameters()).device)
+        # max_len_last = max(last_utterance_lens)
         token_tensor = torch.Tensor(([0.0] + [0.0] + ([1.0] * (max_len)))).to(next(self.parameters()).device)
-        #  token_tensor = torch.Tensor(([0.0] + [0.0] + [0.0] + ([1.0] * (max_len - 2)))).to(next(self.parameters()).device)
         segment_encoding_tensor = self.segment_embedding(token_tensor.long())
-        # a = self.segment_embedding(torch.Tensor([1.0]))
 
         # return token_tensor
         return segment_encoding_tensor
@@ -468,13 +364,11 @@ class CustomTransformerEncoder(nn.Module):
 
         for mod in self.layers:
             output, attn_weights = mod(src=output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
-            # print(attn_weights.shape)
             attn_weights_list.append(attn_weights)
 
         if self.norm is not None:
             output = self.norm(output)
 
-        # print('[0] shape: ', attn_weights_list[0].shape)
         return output, attn_weights_list
 
 
@@ -512,8 +406,6 @@ class CustomTransformerEncoderLayer(nn.Module):
         src = src + self.dropout_1(src2)
         src = self.norm_1(src)
 
-        # print(attn_weights.shape)
-
         return src, attn_weights
 
 
@@ -539,31 +431,13 @@ class ContextModel(nn.Module):
 
     def forward(self, word_embedding, utterance_lengths):
         word_embedding, _ = self.bi_gru(word_embedding)
-        # weight_weights = self.weight_softmax(self.weight_sigmoid(self.dropout_2(self.weight_fc_2(self.relu_0(self.weight_fc_1(word_embedding)))))).transpose(1, 0)
-        # weight_weights = self.weight_softmax(self.dropout_2(self.weight_fc_2(self.relu_0(self.weight_fc_1(word_embedding))))).transpose(1, 0)
-
-        # word_embedding = self.sigmoid_0(self.dropout_0(self.word_wise_fc_0(word_embedding)))       # shape: (sequence_length, batch_size, d_model)
 
         word_embedding = word_embedding.permute(1, 2, 0)    # new shape: (batch_size, d_context, sequence_length)
 
-        """weight_list = []
-        sequence_length = word_embedding.shape[2]
-        for batch_i in range(word_embedding.shape[0]):
-            weight_list.append([[(1 / utterance_lengths[batch_i])]] * sequence_length)
-        weight_tensor = torch.Tensor(weight_list).to(next(self.parameters()).device)"""
-        # print(weight_tensor.shape)
-        # print(weight_weights.shape)
-        # print('word_embedding_shape: ', word_embedding.shape)
-        # print('weight_tensor_shape: ', weight_tensor.shape)
-
-        # context_embedding = word_embedding @ weight_tensor
-        # context_embedding = word_embedding @ weight_weights
         # context_embedding = context_embedding.squeeze(2)        # new shape: (batch_size, d_context)
         weight_tensor = torch.ones(word_embedding.shape[0], word_embedding.shape[2], 1).to(next(self.parameters()).device)     # shape: (batch_size, sequence_length, 1)
         context_embedding = word_embedding @ weight_tensor
         context_embedding = context_embedding.squeeze(2)    # new shape: (batch_size, d_context)
-
-        # print(context_embedding.shape)
 
         return context_embedding
 
@@ -576,10 +450,7 @@ class IronyClassifier(nn.Module):
         self.d_model = d_model
         self.d_context = d_context
 
-        # self.context_fc_0 = nn.Linear(in_features=self.d_context, out_features=self.d_context)
 
-
-        #  self.word_embedding = self.load_word_embedding(trainable=True)
         self.word_embedding = nn.Embedding(num_embeddings=100004, embedding_dim=500)
         print('word_embedding loaded')
         self.positional_encoder = PositionalEncoding(d_model, dropout_p)
@@ -599,7 +470,7 @@ class IronyClassifier(nn.Module):
 
     def load_word_embedding(self, trainable=True):
         # create word embedding state dict
-        vectors = bcolz.open('data/irony_data/SARC_2.0/6B.300.dat')
+        vectors = bcolz.open('../../data/irony_data/SARC_2.0/6B.300.dat')
         #  vectors = bcolz.open('data/irony_data/FastText/300d-1M-SARC_2_0_Adjusted.dat')
         weights_matrix = np.zeros((100004, 300))
         for i in range(100000):
@@ -619,7 +490,6 @@ class IronyClassifier(nn.Module):
     def generate_src_mask(self, utterance_lens: tuple, last_utterance_lens) -> torch.Tensor:
 
         max_len = max(utterance_lens)
-        #  max_len_last = max(last_utterance_lens)
 
         src_mask = []
 
@@ -645,7 +515,6 @@ class IronyClassifier(nn.Module):
             last_utterance_lens = [last_utterance_lens]
         src = self.word_embedding(src.long())
 
-        #  if True:
         if self.training:
             word_embedding = src
         else:
@@ -659,7 +528,6 @@ class IronyClassifier(nn.Module):
                 return None, word_embedding, None
 
         if not first:
-            #  if True:
             if self.training:
                 cls = last_word_embedding[0]
                 last_word_embedding = last_word_embedding[1:]

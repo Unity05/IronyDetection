@@ -3,12 +3,10 @@
 from nltk.stem import PorterStemmer, WordNetLemmatizer, SnowballStemmer
 from nltk import FreqDist, pos_tag
 from nltk.corpus import wordnet
-from nltk.tokenize import word_tokenize
 import pandas as pd
 import sklearn
 
 import re
-import collections
 
 import os
 import json
@@ -108,18 +106,11 @@ def lemmatize_list(x, abbreviation_policy):
 
 class CreateVocabulary:
     def __init__(self):
-        # self.vocab = collections.Counter(dict())
         self.vocab = []
         self.i = 0
 
     def add(self, x):
-        # a = time.process_time()
-        # frequency_dict = FreqDist(samples=x.split())
-        # self.vocab += collections.Counter(frequency_dict)
-        # print('Duration: ', time.process_time() - a)
-        # print(x)
         self.vocab += x.split()
-        # print('i: ', self.i)
         self.i += 1
 
 
@@ -142,73 +133,30 @@ def generate_vocabulary(root='data', max_len=0):
             df[relevant_column_name] = df[relevant_column_name].str.lower().str.translate(
                 str.maketrans(character_replacement_dict)).str.replace(" '", "").replace("' ", "").str.split().apply(
                 lambda x: lemmatize_list(x=x, abbreviation_policy=abbreviation_policy))
-            #df[relevant_column_name] = df[relevant_column_name].str.split().apply(
-             #   lambda x: lemmatize_list(x=x, abbreviation_policy=abbreviation_policy))
-            # df[relevant_column_name] = df[relevant_column_name].str.replace('[...…,()--;:?!=*~%"$^#<>_{}/]', ' ').replace("'", " ").replace("\\", " ").str.lower().str.split().apply(
-              #   lambda x: lemmatize_list(x=x, abbreviation_policy=abbreviation_policy))     # 'comment' column contains 'nan' elements; we can ignore that since the first one appears to be at index >50,000
             df[relevant_column_name] = df[relevant_column_name].apply(lambda x: ' '.join([lemmatizer.lemmatize(
                 y[0], get_wordnet_pos(y[1])) for y in pos_tag(x.split())]))
-
-        print('Okay.')
-
-        #df = df.loc[df['label'] == 0]        # just for audio recording
 
         df.to_csv(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv'), index=False, encoding='utf-8')
     else:
         df = pd.read_csv(os.path.join(root, 'irony_data/train-balanced-sarcasm-adjusted.csv'))
 
-    print(df['comment'])
-    # print(df[~(df['comment'].str.len() > max_len)])
-    # print(df[df['comment'].apply(lambda x: print(type(len(str(x).split()))))])
-
-    # df = df[~(df['comment'].str.len() <= max_len)]
-    # df = df[~(df['parent_comment'].str.len() <= max_len)]
-    # print(df[df['comment'].apply(lambda x: print(type(len(str(x).split()) <= max_len)))])
     df = df[df['comment'].apply(lambda x: len(str(x).split()) <= max_len)]
     df = df[df['parent_comment'].apply(lambda x: len(str(x).split()) <= max_len)]
-    print('len_df: ', len(df))
     df.to_csv('data/irony_data/train-balanced-sarcasm-adjusted-length.csv')
-
-    # print(df.parent_comment.tolist())
 
     vectorizer = sklearn.feature_extraction.text.CountVectorizer()
     vectorizer.fit_transform(df.parent_comment.astype('U').tolist())
     vocabulary_dict = vectorizer.vocabulary_
     sorted_vocabulary_dict_items = sorted(vocabulary_dict.items(), reverse=True)
 
-    # df['frequencies_comments'] = df.comment.astype('U').apply(lambda x: FreqDist(samples=x.split()))
     vocabulary_creator = CreateVocabulary()
     df.comment.astype('U').apply(lambda x: vocabulary_creator.add(x=x))
-    # print('First half finished.')
-    # df['frequencies_parent_comments'] = df.parent_comment.astype('U').apply(lambda x: FreqDist(samples=x.split()))
     df.parent_comment.astype('U').apply(lambda x: vocabulary_creator.add(x=x))
-    # print('Second half finished.')
 
     vocab = vocabulary_creator.vocab
     vocab_words_frequencies = FreqDist(samples=vocab)
 
-    # print(df['frequencies'])
-
-    """vocab = collections.Counter(dict())
-
-    i = 0
-    for frequency_name in ['frequencies_comments', 'frequencies_parent_comments']:
-        for frequency_dict in df[frequency_name]:
-            print(vocab)
-            vocab += collections.Counter(frequency_dict)
-            print(f'{((i / 2.0e6) * 100)}% done.')
-            i += 1"""
-
-    # print(frequency_dict)
-
-    #for top_i_item in sorted_vocabulary_dict_items:
-     #   print(top_i_item)
-
-    # print(vectorizer.vocabulary_)
-
-    # print(dict(vocab_words_frequencies))
     k = -1
-    # print(f'{k} most frequent words: {list(vocab_words_frequencies)[:k]}')
 
     vocabulary = {}
     for i, word in enumerate(list(vocab_words_frequencies)[:k]):
@@ -227,21 +175,27 @@ def split_data(root='data/irony_data', p_train=0.01, p_valid=0.1, p_test=0.1):
 
     df_train_one = df.loc[df['label'] == 1].head(int(train_len / 2))
     df_train_one_len_median = df_train_one['comment'].apply(lambda x: len(str(x).split())).median()
-    df_train_one_0 = df_train_one[df_train_one['comment'].apply(lambda x: len(str(x).split()) <= df_train_one_len_median)]
-    df_train_one_1 = df_train_one[df_train_one['comment'].apply(lambda x: len(str(x).split()) > df_train_one_len_median)]
+    df_train_one_0 = df_train_one[df_train_one['comment'].
+        apply(lambda x: len(str(x).split()) <= df_train_one_len_median)]
+    df_train_one_1 = df_train_one[df_train_one['comment'].
+        apply(lambda x: len(str(x).split()) > df_train_one_len_median)]
 
     df_train_zero = df.loc[df['label'] == 0].head(int(train_len / 2))
     df_train_zero_len_median = df_train_zero['comment'].apply(lambda x: len(str(x).split())).median()
-    df_train_zero_0 = df_train_zero[df_train_zero['comment'].apply(lambda x: len(str(x).split()) <= df_train_zero_len_median)]
-    df_train_zero_1 = df_train_zero[df_train_zero['comment'].apply(lambda x: len(str(x).split()) > df_train_zero_len_median)]
+    df_train_zero_0 = df_train_zero[df_train_zero['comment'].
+        apply(lambda x: len(str(x).split()) <= df_train_zero_len_median)]
+    df_train_zero_1 = df_train_zero[df_train_zero['comment'].
+        apply(lambda x: len(str(x).split()) > df_train_zero_len_median)]
 
     # df_train = df.loc[:train_len]
     df_train = pd.concat([df_train_one, df_train_zero], ignore_index=True)
     df_train_0 = pd.concat([df_train_one_0, df_train_zero_0], ignore_index=True)
     df_train_1 = pd.concat([df_train_one_1, df_train_zero_1], ignore_index=True)
     print('len_df_train: ', len(df_train))
-    print('len_df_train_0: ', len(df_train_0), ' | len_df_train_one_0: ', len(df_train_one_0), ' | len_df_train_zero_0: ', len(df_train_zero_0))
-    print('len_df_train_1: ', len(df_train_1), ' | len_df_train_one_1: ', len(df_train_one_1), ' | len_df_train_zero_1: ', len(df_train_zero_1))
+    print('len_df_train_0: ', len(df_train_0), ' | len_df_train_one_0: ', len(df_train_one_0),
+          ' | len_df_train_zero_0: ', len(df_train_zero_0))
+    print('len_df_train_1: ', len(df_train_1), ' | len_df_train_one_1: ', len(df_train_one_1),
+          ' | len_df_train_zero_1: ', len(df_train_zero_1))
 
     df_valid = df.loc[train_len:(train_len + valid_len)]
     df_test = df.loc[(train_len + valid_len):(train_len + valid_len + test_len)]
@@ -255,10 +209,6 @@ def split_data(root='data/irony_data', p_train=0.01, p_valid=0.1, p_test=0.1):
 
 
 def create_headlines_csv(root='data/irony_data/sarcastic_headlines'):
-    """with open(os.path.join(root, 'Sarcasm_Headlines_Dataset.json'), 'r') as file:
-        sarcasm_headlines_json_v1 = json.load(file)
-    with open(os.path.join(root, 'Sarcasm_Headlines_Dataset_v2.json'), 'r') as file:
-        sarcasm_headlines_json_v2 = json.load(file)"""
     sarcasm_headlines_df_v1 = pd.read_json(os.path.join(root, 'Sarcasm_Headlines_Dataset.json'), lines=True)
     sarcasm_headlines_df_v1 = sarcasm_headlines_df_v1.drop(['article_link'], axis=1)
     sarcasm_headlines_df_v2 = pd.read_json(os.path.join(root, 'Sarcasm_Headlines_Dataset_v2.json'), lines=True)
@@ -269,7 +219,7 @@ def create_headlines_csv(root='data/irony_data/sarcastic_headlines'):
 
     sarcasm_headlines_df = pd.concat([sarcasm_headlines_df_v1, sarcasm_headlines_df_v2])
 
-    with open('data/irony_data/abbr_replacers', 'r') as file:
+    with open('../../../data/irony_data/abbr_replacers', 'r') as file:
         abbreviation_policy = json.load(file)
 
     character_replacement_dict = {'.': '', '…': '', ',': '', '(': '', ')': '', '-': ' ', ';': '', ':': '',
@@ -316,17 +266,12 @@ def denoise_dataset(remove_indices_path):
         remove_indices = json.load(remove_indices_file)
     remove_indices = remove_indices['remove_samples_indices']
 
-    train_df = pd.read_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv')
-
-    # print(train_df)
+    train_df = pd.read_csv('../../../data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv')
 
     adjusted_train_df = train_df.drop(remove_indices)
 
-    # print(adjusted_train_df)
-
-    # print(remove_indices)
-
-    adjusted_train_df.to_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv', index=False, encoding='utf-8')
+    adjusted_train_df.to_csv('data/irony_data/train-balanced-sarcasm-train-2-adjusted.csv',
+                             index=False, encoding='utf-8')
 
 
 def adjust_SARC_2_dataset(root='data/irony_data'):
@@ -340,7 +285,7 @@ def adjust_SARC_2_dataset(root='data/irony_data'):
                                   '^': ' ', '#': '', '<': ' ', '>': ' ', '_': ' ', '{': ' ', '}': ' ', '/': ' ',
                                   '\\': ' ', '|': ''}
 
-    with open('data/irony_data/abbr_replacers', 'r') as file:
+    with open('../../../data/irony_data/abbr_replacers', 'r') as file:
         abbreviation_policy = json.load(file)
 
     adjusted_sarc_2_dataset = {}
@@ -348,25 +293,17 @@ def adjust_SARC_2_dataset(root='data/irony_data'):
     last_time = time.process_time()
     for i, key in enumerate(sarc_2_dataset.keys()):
         if i % 1000 == 0 and i != 0:
-            print((i / sarc_2_dataset_length), ' | Estimated duration: ', ((1 / (i / sarc_2_dataset_length)) * (time.process_time() - last_time)))
+            print((i / sarc_2_dataset_length), ' | Estimated duration: ',
+                  ((1 / (i / sarc_2_dataset_length)) * (time.process_time() - last_time)))
         text = sarc_2_dataset[key][0]
-        # text = "It is a machine's destiny."
-        # print(text)
-        text = text.lower().translate(str.maketrans(character_replacement_dict)).replace(" '", "").replace("' ", "").split()
+        text = text.lower().translate(str.maketrans(character_replacement_dict)).replace(" '", "")\
+            .replace("' ", "").split()
         text = lemmatize_list(x=text, abbreviation_policy=abbreviation_policy).split()
         text = ' '.join([lemmatizer.lemmatize(y[0], get_wordnet_pos(y[1])) for y in pos_tag(text)]).replace("'s", "")
-        # print(text)
-        # exit(-1)
         adjusted_sarc_2_dataset[key] = [text]
 
     with open(os.path.join(root, 'SARC_2.0/readjusted-comments.json'), 'w') as adjusted_sarc_2_dataset_file:
         json.dump(adjusted_sarc_2_dataset, adjusted_sarc_2_dataset_file)
 
 
-# print(', ( )'.lower().replace('[...…,()]', 'a'), ' | ', ', ( )'.replace('[...…,()]', 'a'))
-# generate_vocabulary(root='data', max_len=64)
-# update_data(root='data')
-# split_data()
-# create_headlines_csv(root='data/irony_data/sarcastic_headlines')
-# denoise_dataset(remove_indices_path='models/irony_classification/remove_samples_indices_dict_2.json')
 adjust_SARC_2_dataset(root='data/irony_data')

@@ -4,48 +4,16 @@ import numpy as np
 from matplotlib import colors
 import matplotlib.pyplot as plt
 
-from Dataset import IronyClassificationDataset
-from model import IronyClassifier
-#  from playground import lol
-
-"""x = torch.Tensor([
-    [0.0, 0.1, 0.2],
-    [0.3, 0.4, 0.5],
-    [0.6, 0.7, 0.8]
-])
-
-print(x.shape)
-
-print(x)
-
-x = x.numpy()
-
-print(x.shape)
-
-print(x)
-
-fig, ax = plt.subplots()
-im = ax.imshow(x)
-
-cbar = ax.figure.colorbar(im, ax=ax)
-
-fig.tight_layout()
-plt.show()"""
+from src.data.Dataset import IronyClassificationDataset
+from src.model_training.model import IronyClassifier
 
 
 def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
     x = attn_weights_list[0].shape[-1]
     n_layers = len(attn_weights_list)
-    # print(n_layers)
     n_heads = 10     # change later TODO
-    #  print(np.array(attn_weights_list).shape)
-    #  print(attn_weights_list.shape)
-    print(attn_weights_list[0].shape)
-    print(len(attn_weights_list))
 
     fig, axes = plt.subplots(n_layers, n_heads)
-    # print(axes)
-    # print(attn_weights_list[1])
 
     imgs = []
     attn_max_list = []
@@ -54,7 +22,6 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
         for j in range(n_heads):
             attn_max_list[i].append([np.argmax(attn_weights_list[((i))][batch_i][j][0][3:])])
             imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][0], axis=0), cmap=cmap))
-            # imgs.append(axes[i, j].imshow(np.expand_dims(a=attn_weights_list[((i))][batch_i][j][1][2:], axis=0), cmap=cmap))
             axes[i, j].label_outer()
 
             plt.xticks(
@@ -63,7 +30,6 @@ def plot_attn(attn_weights_list, batch_i=0, cmap='cool'):
                 rotation='vertical'
             )
 
-    #  print(attn_max_list)
     for row in attn_max_list:
         print(row)
 
@@ -79,9 +45,7 @@ def collate_fn(batch):
 
 
 def test(model_path, distance, root='data/irony_data', batch_size=1):
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device('cpu')
-    # model = torch.load(model_path, map_location='cpu')
     model = IronyClassifier(
         batch_size=batch_size,
         n_tokens=1.0e5,
@@ -120,30 +84,14 @@ def test(model_path, distance, root='data/irony_data', batch_size=1):
 
             # ==== forward ====
 
-            #  output, word_embedding, _, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
             output, word_embedding, _ = model(src=utterances[0], utterance_lens=utterance_lens[0], first=True)
 
-            """output, word_embedding, _, context_tensor = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
-                                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])"""
             output, word_embedding, _ = model(src=utterances[1], utterance_lens=utterance_lens[1], first=False,
-                                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
-            los = distance(output.squeeze(1), targets[1].to(device))
-
-            """print(utterances[1])
-
-            print(output)
-
-            print(los)
-
-            print(targets[1])"""
-
-            #  lol(word_embedding=context_tensor)
+                                              last_word_embedding=word_embedding, last_utterance_lens=utterance_lens[0])
+            loss = distance(output.squeeze(1), targets[1].to(device))
 
             plot_attn(attn_weights_list=_, batch_i=0, cmap='cool')
 
 
-# plot_attn(attn_weights_list=x, batch_i=0)
-"""test(model_path='models/irony_classification/models/irony_classification_model_22.1.pth',
-     distance=nn.BCELoss(), root='data/irony_data', batch_size=1)"""
 test(model_path='models/irony_classification/model_checkpoints/irony_classification_model_checkpoint_38.10.pth',
      distance=nn.BCEWithLogitsLoss(), root='data/irony_data', batch_size=1)

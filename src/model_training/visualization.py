@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 def loss_comparison_reddit_sarcasm_dataset():
-    with open('models/irony_classification/train_loss_distribution_with_second_dataset.json', 'r') as train_loss_distribution_with_second_dataset_file:
+    with open('../../models/irony_classification/train_loss_distribution_with_second_dataset.json', 'r') as train_loss_distribution_with_second_dataset_file:
         train_loss_distribution_with_second_dataset = json.load(train_loss_distribution_with_second_dataset_file)
 
     # print(train_loss_distribution_with_second_dataset.keys())

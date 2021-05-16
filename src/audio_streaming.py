@@ -1,7 +1,6 @@
 import pyaudio
 import struct
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def audio_streaming(output_queue):

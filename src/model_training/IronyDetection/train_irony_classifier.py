@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import json
 
-from helper_functions import AverageMeter, CosineLearningRateScheduler
-from Dataset import SARC_2_0_Dataset
-from model import IronyClassifier
+from src.model_training.helper_functions import AverageMeter, CosineLearningRateScheduler
+from src.data.Dataset import SARC_2_0_Dataset
+from src.model_training.model import IronyClassifier
 
 import warnings
 
@@ -116,22 +116,14 @@ def train(model, train_dataloader, device, batch_size, distance, optim, max_norm
                 n_exceptions = 0
 
         except KeyError:
-        #  except KeyError:
             n_exceptions += 1
             warnings.warn(message='CUDA OOM. Skipping current iteration. (I know that is not a good style - but meh.)',
                           category=ResourceWarning)
 
-    """train_loss_distribution = {
-        'all_train_losses': all_train_losses,
-        'zero_train_losses': zero_train_losses,
-        'one_train_losses': one_train_losses
-    }
-    with open('models/irony_classification/train_loss_distribution_with_second_dataset.json', 'w') as train_loss_distribution_file:
-        json.dump(train_loss_distribution, train_loss_distribution_file)"""
     remove_samples_indices_dict = {
         'remove_samples_indices': remove_samples_indices
     }
-    with open('models/irony_classification/remove_samples_indices_dict_2.json', 'w') as remove_samples_indices_dict_file:
+    with open('../../../models/irony_classification/remove_samples_indices_dict_2.json', 'w') as remove_samples_indices_dict_file:
         json.dump(remove_samples_indices_dict, remove_samples_indices_dict_file)
 
     print(f'Accuracy: {(correct / total)}')
@@ -182,24 +174,21 @@ def valid(model, valid_dataloader, device, batch_size, distance, epoch):
                 los = distance(output.squeeze(1), targets[1].to(device))
                 loss = los
 
-                correct += (torch.where(output.squeeze(1) > 0.0, torch.Tensor([1.0]).to(torch.device('cuda')), torch.Tensor([0.0]).to(torch.device('cuda'))) == targets[1]).sum().item()
-                #  print('output: ', output.item())
-                #  print('target: ', targets[1].item())
+                correct += (torch.where(output.squeeze(1) > 0.0, torch.Tensor([1.0]).to(torch.device('cuda')),
+                                        torch.Tensor([0.0]).to(torch.device('cuda'))) == targets[1]).sum().item()
                 if output.item() >= 0.0 and targets[1].item() == 1:
                     tp += 1
                 elif output.item() >= 0.0 and targets[1].item() == 0:
                     fp += 1
                 elif output.item() < 0.0 and targets[1].item() == 1:
                     fn += 1
-                #  exit(-1)
-
 
                 total += output.shape[0]
 
             # ==== log ====
             if loss.item() != 0:
                 average_meter.step(loss=loss.item())
-        #  except KeyError:
+
         except:
             warnings.warn(message='CUDA OOM. Skipping current iteration. (I know that is not a good style - but meh.)',
                           category=ResourceWarning)
@@ -241,15 +230,10 @@ def main(version):
     }
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #  device = torch.device('cpu')
 
     # define dataset loaders
 
-    #  train_dataset = IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data', phase=2)
-    #  train_dataset = SARC_2_0_IronyClassificationDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    #  train_dataset = SarcasmHeadlinesDataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     train_dataset = SARC_2_0_Dataset(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    #  train_dataset = SARC_2_0_Dataset_Bigram(mode='train', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=hyper_params['batch_size'],
@@ -257,13 +241,6 @@ def main(version):
         num_workers=0,
         collate_fn=collate_fn
     )
-    # train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=False)
-    # train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, sampler=train_sampler, batch_size=hyper_params['batch_size'], shuffle=True, num_workers=0, collate_fn=collate_fn)
-
-    #  valid_dataset = IronyClassificationDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    #  valid_dataset = SARC_2_0_IronyClassificationDataset(mode='test', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    #  valid_dataset = SarcasmHeadlinesDataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
-    #  valid_dataset = SARC_2_0_Dataset_Bigram(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     valid_dataset = SARC_2_0_Dataset(mode='valid', top_k=hyper_params['vocabulary_size'], root='data/irony_data')
     valid_dataloader = torch.utils.data.DataLoader(
         dataset=valid_dataset,
@@ -272,11 +249,6 @@ def main(version):
         num_workers=0,
         collate_fn=collate_fn
     )
-    """valid_dataloader = torch.utils.data.DataLoader(dataset=valid_dataset,
-                                                   batch_size=10,
-                                                   shuffle=False,
-                                                   num_workers=0,
-                                                   collate_fn=collate_fn)"""
 
     # get models
 
@@ -295,12 +267,7 @@ def main(version):
 
     params = [p for p in model.parameters() if p.requires_grad]
     optim = torch.optim.AdamW(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5, amsgrad=False)
-    #  optim = torch.optim.SGD(params=params, lr=hyper_params['i_lr'], weight_decay=1.0e-5)
-    #  distance = nn.BCELoss()
-    #  distance_weights = torch.Tensor([1.0001]).to(device)
-    #  distance = nn.BCEWithLogitsLoss(pos_weight=distance_weights)
     distance = nn.BCEWithLogitsLoss()
-    #  distance = nn.CrossEntropyLoss()
     lr_scheduler = CosineLearningRateScheduler(
         i_lr=hyper_params['i_lr'],
         n_batches_warmup=hyper_params['n_batches_warmup'],
@@ -320,13 +287,12 @@ def main(version):
     # train
 
     for i_epoch in range(0, (0 + hyper_params['n_epochs'])):
-        """lr = train(model=model, train_dataset=train_dataset, train_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
-                   distance=distance, optim=optim, max_norm=hyper_params['max_norm'], epoch=i_epoch,
-                   lr_scheduler=lr_scheduler, continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)"""
+        lr = train(model=model, train_dataset=train_dataset, train_dataloader=train_dataloader, device=device,
+                   batch_size=hyper_params['batch_size'], distance=distance, optim=optim,
+                   max_norm=hyper_params['max_norm'], epoch=i_epoch, lr_scheduler=lr_scheduler,
+                   continue_training=CONTINUE_TRAINING, valid_dataloader=valid_dataloader)
         valid(model=model, valid_dataloader=valid_dataloader, device=device, batch_size=hyper_params['batch_size'],
               distance=distance, epoch=i_epoch)
-        """valid(model=model, valid_dataloader=train_dataloader, device=device, batch_size=hyper_params['batch_size'],
-              distance=distance, epoch=i_epoch)"""
 
         # save
 

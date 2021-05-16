@@ -81,7 +81,6 @@ def decoder(output, dataset, label_lens=None, blank_label=28, targets=None, trai
         print('BATCH_OUTPUT: ', batch_output)
         decoded_output.append(dataset.indices_to_text(indices=batch_output.tolist(), policy=dataset.index_word_policy))
         if not train:
-            #decoded_targets.append(dataset.indices_to_text(indices=targets[batch_i][:label_lens[batch_i]].tolist(), policy=dataset.index_word_policy))
             decoded_targets.append(dataset.indices_to_text(indices=targets[0][:label_lens[0]].tolist(),
                                                            policy=dataset.index_char_policy))
 
@@ -99,12 +98,10 @@ def adjust_output(output, probabilities):
         if char is not current_char:
             if char is not '-':
                 adjusted_output.append(char)
-                #print(same_char_probabilities)
                 if char is ' ':
                     adjusted_probabilities.append(same_word_probabilities)
                     same_word_probabilities = []
                 elif same_char_probabilities:
-                    #print(same_char_probabilities)
                     same_word_probabilities.append(torch.mean(torch.stack(same_char_probabilities), dim=0).cpu().detach().numpy())
                 else:
                     same_word_probabilities.append(probabilities[0][i].cpu().detach().numpy())
@@ -115,8 +112,6 @@ def adjust_output(output, probabilities):
             same_char_probabilities.append(probabilities[0][i])
 
     adjusted_probabilities.append(same_word_probabilities)
-
-    #print(np.array(adjusted_probabilities).shape)
 
     return ''.join(adjusted_output), adjusted_probabilities
 
@@ -163,7 +158,6 @@ def adjust_output_train(output, targets, dataset):
                     else:
                         same_word_probabilities.append(probs[i])
 
-                #same_char_probabilities = []
                 current_char = char
             else:
                 same_char_probabilities.append(probs[i])
@@ -177,6 +171,5 @@ def adjust_output_train(output, targets, dataset):
         for word_index in target:
             adjusted_targets.append(torch.Tensor([word_index]))
 
-    #print(len(adjusted_probabilities))
     return torch.nn.utils.rnn.pad_sequence(adjusted_probabilities), torch.stack(adjusted_targets)
     # TODO: Remove Batching

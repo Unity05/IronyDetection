@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
-import json
-import numpy as np
 
-from helper_functions import AverageMeter, CosineLearningRateScheduler, adjust_output_train, decoder
-from Dataset import Dataset, DatasetASRDecoder
-from model import SpeechModel, FinalDecoder
-
-import time
-
+from src.model_training.helper_functions import AverageMeter, CosineLearningRateScheduler
+from src.data.Dataset import DatasetASRDecoder
+from src.model_training.model import FinalDecoder
 
 torch.set_printoptions(threshold=5000000)
 

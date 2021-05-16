@@ -1,9 +1,8 @@
 import torch
-import torch.nn as nn
 
-from Dataset import Dataset
-from helper_functions import decoder, adjust_output
-from HMM import HMM
+from src.data.Dataset import Dataset
+from src.model_training.helper_functions import decoder
+from src.HMM.HMM import HMM
 
 
 def collate_fn(batch):
@@ -13,7 +12,7 @@ def collate_fn(batch):
 USE_HMM = False
 
 
-model_path = 'models/asr/models/speech_model_4.11.pth'
+model_path = '../../../models/asr/models/speech_model_4.11.pth'
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -44,15 +43,11 @@ for i, data in enumerate(test_dataloader):
 
     # ==== forward ====
     output = model(spectrograms)
-    #output = nn.Softmax(dim=2)(output)
-    #print(output.shape)
-    #print(targets.shape)
 
     # ==== log ====
     probabilities = output
     output, targets = decoder(output=output, targets=targets, dataset=test_dataset, label_lens=target_lens,
                               blank_label=28)
-    #output, probabilities = adjust_output(output=output, probabilities=probabilities)
 
     if USE_HMM:     # word wise hmm
         full_sentence = []
@@ -63,4 +58,3 @@ for i, data in enumerate(test_dataloader):
 
     targets = ''.join(targets)
     print(f'OUTPUT: {output} | \n TARGETS: {targets}')
-    #exit(-1)
